@@ -1,0 +1,59 @@
+# ============================================================
+# render.yaml — Mission Barisal v3 Blueprint (Render.com)
+# One-click deploy: https://dashboard.render.com/blueprints
+#
+# NOTE: Real API keys are NEVER stored in git. They are set
+# in the Render dashboard (or via API) as env secrets after
+# this blueprint creates the service. sync:false vars below
+# are prompts — fill them in the dashboard after deploy.
+# ============================================================
+
+services:
+  - type: web
+    name: mission-barisal
+    runtime: node
+    rootDir: s
+    plan: free
+    region: singapore
+    buildCommand: ""
+    startCommand: node api.js
+    healthCheckPath: /health
+    envVars:
+      # Node 22+ is REQUIRED (server uses node:sqlite, Node 22.5+)
+      - key: NODE_VERSION
+        value: "22"
+      # Render auto-injects PORT; server reads process.env.PORT
+      # ---- Provider keys (fill real values in dashboard) ----
+      - key: OPENCODE_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CUSTOM_PROVIDER_1_NAME
+        value: WorldBusiness
+      - key: CUSTOM_PROVIDER_1_URL
+        sync: false
+      - key: CUSTOM_PROVIDER_1_KEY
+        sync: false
+      - key: CUSTOM_PROVIDER_1_PRIORITY
+        value: "2"
+      - key: CUSTOM_PROVIDER_2_NAME
+        value: m.skilltoearn
+      - key: CUSTOM_PROVIDER_2_URL
+        sync: false
+      - key: CUSTOM_PROVIDER_2_KEY
+        sync: false
+      - key: CUSTOM_PROVIDER_2_PRIORITY
+        value: "3"
+      # ---- App config ----
+      - key: APP_URL
+        value: https://mission-barisal.onrender.com
+      - key: ANTIDOTE_ENABLED
+        value: "true"
+      - key: UDS_PORT
+        value: "5100"
+      - key: CACHE_TTL
+        value: "86400000"
+      - key: CACHE_MAX_ENTRIES
+        value: "1000"

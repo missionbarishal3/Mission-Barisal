@@ -20,3 +20,5 @@ s.zip
 .vscode/
 .zombiecoder/
 .idea/
+# Render blueprint (safe — no secrets)
+!render.yaml
