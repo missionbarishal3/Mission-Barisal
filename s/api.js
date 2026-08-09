@@ -13362,7 +13362,7 @@ function handleWebSocketUpgrade(req, socket, head) {
   const key = req.headers["sec-websocket-key"];
   const acceptKey = crypto
     .createHash("sha1")
-    .update(key + "258EAFA5-E914-47DA-95CA-5AB5DC113594")
+    .update(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
     .digest("base64");
 
   socket.write(
