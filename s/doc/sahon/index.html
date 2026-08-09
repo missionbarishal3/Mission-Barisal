@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZombieCoder Mission Barisal — সহজ ভাষায় পুরো সিস্টেম</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card2: #222634;
+    --accent: #00e5a0;
+    --accent2: #00b8ff;
+    --warn: #ffb020;
+    --danger: #ff5252;
+    --text: #e8eaf0;
+    --muted: #9aa0b0;
+    --border: #2c3142;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', sans-serif;
+    line-height: 1.8;
+    font-size: 17px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.hero {
+    text-align: center;
+    padding: 56px 20px 44px;
+    background: linear-gradient(160deg, #10141f 0%, #0d2b24 100%);
+    border-bottom: 3px solid var(--accent);
+    position: relative;
+    overflow: hidden;
+  }
+  header.hero::before {
+    content: '🧟';
+    position: absolute;
+    font-size: 220px;
+    opacity: 0.06;
+    right: -20px;
+    top: -40px;
+    transform: rotate(-12deg);
+  }
+  .logo { font-size: 20px; letter-spacing: 4px; color: var(--accent); font-weight: 700; }
+  .hero h1 { font-size: 42px; margin: 14px 0 10px; color: #fff; }
+  .hero .tag { color: var(--muted); font-size: 18px; max-width: 640px; margin: 0 auto; }
+  .badge {
+    display: inline-block; background: rgba(0,229,160,0.12); color: var(--accent);
+    border: 1px solid rgba(0,229,160,0.35); border-radius: 999px;
+    padding: 4px 16px; font-size: 14px; margin: 8px 4px;
+  }
+  .stats {
+    display: flex; flex-wrap: wrap; gap: 14px; justify-content: center;
+    margin: 26px auto 0; max-width: 720px;
+  }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 22px; text-align: center; min-width: 110px;
+  }
+  .stat b { display: block; font-size: 26px; color: var(--accent); }
+  .stat span { font-size: 13px; color: var(--muted); }
+
+  section { margin-top: 52px; }
+  h2 {
+    font-size: 28px; color: #fff; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .n {
+    background: var(--accent); color: #06120d; border-radius: 8px;
+    width: 36px; height: 36px; display: inline-flex; align-items: center;
+    justify-content: center; font-size: 18px; font-weight: 800; flex-shrink: 0;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px 24px; margin: 14px 0;
+  }
+  .card.blue { border-left: 4px solid var(--accent2); }
+  .card.green { border-left: 4px solid var(--accent); }
+  .card.orange { border-left: 4px solid var(--warn); }
+  .card.red { border-left: 4px solid var(--danger); }
+  .card h3 { color: #fff; font-size: 20px; margin-bottom: 8px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+
+  .flow {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    justify-content: center; margin: 22px 0;
+  }
+  .flow .step {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; text-align: center; max-width: 180px;
+  }
+  .flow .step b { display: block; color: var(--accent2); font-size: 15px; }
+  .flow .step span { font-size: 12.5px; color: var(--muted); }
+  .flow .arrow { color: var(--accent); font-size: 24px; font-weight: 800; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--border); padding: 10px 12px; text-align: left; }
+  th { background: var(--card2); color: var(--accent); }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin: 6px 0; }
+  .check { color: var(--accent); font-weight: 700; }
+  .cross { color: var(--danger); font-weight: 700; }
+
+  .quote {
+    background: rgba(0,229,160,0.06); border-left: 4px solid var(--accent);
+    padding: 14px 18px; border-radius: 0 10px 10px 0; margin: 14px 0;
+    font-style: italic; color: #cdeee2;
+  }
+
+  .math {
+    background: var(--card2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 22px; margin: 14px 0; font-family: 'Courier New', monospace;
+    font-size: 15px; color: var(--accent2); overflow-x: auto;
+  }
+
+  footer {
+    margin-top: 70px; padding: 26px; text-align: center;
+    background: var(--card); border-top: 1px solid var(--border);
+    border-radius: 14px; color: var(--muted); font-size: 14px;
+  }
+  footer b { color: var(--accent); }
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 30px; }
+    h2 { font-size: 22px; }
+    .flow .arrow { display: none; }
+    .flow { flex-direction: column; }
+    .flow .step { max-width: 100%; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="logo">🧟 ZOMBIECODER · MISSION BARISAL</div>
+  <h1>সহজ ভাষায় পুরো সিস্টেম</h1>
+  <p class="tag">সার্ভার + এক্সটেনশন কীভাবে কাজ করে — টেকনিক্যাল না জেনেও বুঝতে পারবেন। প্রমাণ, স্বচ্ছতা আর নৈতিকতাই এখানে আসল কথা।</p>
+  <div>
+    <span class="badge">৬ জন এজেন্ট</span>
+    <span class="badge">৩৫+ মডেল</span>
+    <span class="badge">৪ ধরনের পরিবহন (Transport)</span>
+    <span class="badge">প্রমাণ ছাড়া উত্তর নেই</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>৪৯৬</b><span>টেস্ট পাস (০ ফেল)</span></div>
+    <div class="stat"><b>৪০</b><span>সর্বোচ্চ টুল/রিকোয়েস্ট</span></div>
+    <div class="stat"><b>১২+</b><span>MCP টুল</span></div>
+    <div class="stat"><b>১০০%</b><span>প্রমাণ-ভিত্তিক</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- 1. What is this -->
+  <section>
+    <h2><span class="n">১</span> সিস্টেমটা আসলে কী?</h2>
+    <div class="card green">
+      <p>ভাবুন, আপনার কম্পিউটারে <b>VS Code</b> নামের একটা প্রোগ্রামে কোড লেখেন। তার পাশেই একটা <b>চ্যাট বক্স</b> আছে — সেখানে আপনি বাংলায় প্রশ্ন করেন: <i>"এই ফাইলটায় বাগ কেন?"</i> বা <i>"এই ফাংশনটা ঠিক করো।"</i></p>
+      <p style="margin-top:10px;">এই চ্যাট বক্সের পেছনে কাজ করে <b>Mission Barisal</b> — একটা <b>মাল্টি-এজেন্ট সিস্টেম</b>। মানে, একসাথে কাজ করে <b>৬ জন বিশেষজ্ঞ "এজেন্ট"</b> — প্রত্যেকের নিজের কাজের ক্ষেত্র আছে। একজন আর্কিটেক্ট, একজন ডিবাগার, একজন সিকিউরিটি গার্ড, একজন পারফরম্যান্স বিশেষজ্ঞ, একজন ডকুমেন্টেশন লেখক, আর একজন কোয়ালিটি ম্যানেজার।</p>
+      <p style="margin-top:10px;">আপনার প্রশ্ন পৌঁছায় আমাদের <b>সার্ভারে</b>। সার্ভার বুঝে নেয় প্রশ্নটা কার জন্য — একজনের জন্য নাকি সবার জন্য — তারপর উত্তর ফিরিয়ে আনে, সাথে <b>প্রমাণ</b>।</p>
+    </div>
+    <div class="quote">"প্রমাণ ছাড়া কথা বলি না" — এটাই এই সিস্টেমের প্রথম শপথ। শাওন ভাইয়ের নির্দেশ: কোনো উত্তর প্রমাণ ছাড়া দেখানো যাবে না।</div>
+  </section>
+
+  <!-- 2. Extension -->
+  <section>
+    <h2><span class="n">২</span> এক্সটেনশনটা কী করে?</h2>
+    <div class="card blue">
+      <p>এক্সটেনশন হচ্ছে <b>আপনার কম্পিউটারে বসানো ছোট্ট প্রোগ্রাম</b> (VS Code-এর ভেতরে)। এটার কাজগুলো:</p>
+      <ul>
+        <li>আপনার লেখা প্রশ্নটা <b>পরিষ্কার করে</b> — Microsoft-এর অপ্রয়োজনীয় বাড়তি লেখা (আমরা যাকে বলি <b>দালালি</b>) বাদ দিয়ে শুধু আসল প্রশ্নটা রাখে।</li>
+        <li>প্রজেক্টের তথ্য জোগাড় করে — কোন ফাইল আছে, কী টেকনোলজি, কী অবস্থা — এগুলো লেখা থাকে <b>SSOT</b> (Single Source of Truth) ফাইলে।</li>
+        <li>আগের শেখা জ্ঞান জোগাড় করে — <b>সিলেবাস</b> ফাইলে। যেমন: "গতবার এ রকম সমস্যা হলে এভাবে সমাধান হয়েছিল।"</li>
+        <li>টুলের সংখ্যা <b>বুদ্ধিমানের মতো কমিয়ে</b> দেয় — ৭১টা টুল দেখালে ছোট মডেল হকচকিয়ে খালি উত্তর দেয়, তাই শুধু দরকারি ১৫-৪০টা টুল পাঠায়।</li>
+        <li>সার্ভারের সাথে <b>৪ ধরনের পথে</b> কথা বলে — দ্রুততম পথ খুঁজে নেয় (UDS → HTTP → SSE → WebSocket)।</li>
+      </ul>
+    </div>
+    <div class="card orange">
+      <h3>🚫 ফাঁকা উত্তর কেন আসত? (এবং সমাধান)</h3>
+      <p>আগে এক্সটেনশন <b>৭১টা টুল একসাথে</b> পাঠাত। ছোট/কোয়ান্টাইজড মডেল এত ভারী প্যাকেট দেখে <b>কিছুই লিখত না</b> — খালি উত্তর! ডায়াগনস্টিক: <span class="small">"Tools provided: 71, Estimated input tokens: 50471"</span></p>
+      <p style="margin-top:8px;"><b>সমাধান:</b> এখন সার্ভার সবগুলো পথেই টুল <b>৪০-এর বেশি পাঠায় না</b> (<span class="small">V1_TOOLS_CAPPED</span>), আর এক্সটেনশন শুধু দরকারি টুল বেছে নেয়। <b>প্রমাণ:</b> ৭১টা টুল পাঠিয়ে টেস্ট করলাম — উত্তর এলো ২০৪ ক্যারেক্টারের, একদম খালি না!</p>
+    </div>
+  </section>
+
+  <!-- 3. Server -->
+  <section>
+    <h2><span class="n">৩</span> সার্ভারটা কী করে?</h2>
+    <div class="card green">
+      <p>সার্ভার হচ্ছে <b>মস্তিষ্ক</b> — যেখানে সব সিদ্ধান্ত নেওয়া হয়। এটি:</p>
+      <ul>
+        <li>প্রশ্ন <b>শ্রেণিবিভাগ</b> করে: ছোট প্রশ্ন (২+২ কত?) → ২ জন এজেন্ট; বড় কাজ (প্রজেক্ট বানাও) → ৩+ জন এজেন্ট একসাথে।</li>
+        <li><b>প্রমাণ-দ্বার (Evidence Gate)</b> চালায় — উত্তর ফিরে যাওয়ার আগে দেখে, উত্তরে ফাইলের নাম/লাইন নম্বর/টেস্টের ফলাফল আছে কি না। প্রমাণ না থাকলে ইউজারকে সত্য কথা বলে: "আমার কাছে প্রমাণ নেই।"</li>
+        <li><b>গোল সেট</b> করে — ইউজার যা চেয়েছে, সেটা ঠিকঠাক দেওয়া হয়েছে কি না, শেষে যাচাই করে।</li>
+        <li><b>সিলেবাসে শেখে</b> — কাজ শেষ হলে "কী শিখলাম" লিখে রাখে, যেন পরের বার আরও স্মার্ট হয়।</li>
+        <li><b>মেমোরি রাখে</b> — কোন সেশনে কী হয়েছিল, কোন এজেন্ট কী বলেছিল — সব সংরক্ষিত থাকে।</li>
+        <li>এক provider ব্যর্থ হলে <b>অন্য provider-এ সুইচ</b> করে — ৩৫+ মডেলের একটা চেইন।</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4. Agents -->
+  <section>
+    <h2><span class="n">৪</span> ৬ জন এজেন্ট — কে কী করে?</h2>
+    <table>
+      <tr><th>এজেন্ট</th><th>নাম</th><th>দায়িত্ব</th></tr>
+      <tr><td>code-guru</td><td>Code Guru — মনু</td><td>আর্কিটেকচার, ডিজাইন, প্রজেক্ট সংগঠন</td></tr>
+      <tr><td>bug-hunter</td><td>Bug Hunter — জুয়েল</td><td>ডিবাগিং, এরর হ্যান্ডলিং, রুট কজ</td></tr>
+      <tr><td>security-hero</td><td>Security Hero — বাবলু</td><td>নিরাপত্তা, ডেটা সুরক্ষা</td></tr>
+      <tr><td>perf-wizard</td><td>Performance Wizard — রাশেদ</td><td>অপটিমাইজেশন, ক্যাশিং, রিসোর্স</td></tr>
+      <tr><td>doc-king</td><td>Documentation King — হালিম</td><td>ডকুমেন্টেশন, API স্পেক, README</td></tr>
+      <tr><td>qa-tyrant</td><td>Quality Tyrant — মজ্নু</td><td>কোয়ালিটি, ফাইনাল ভেরিফিকেশন</td></tr>
+    </table>
+    <div class="card">
+      <p>বড় কাজ হলে এরা <b>একসাথে কাজ করে</b> — প্রত্যেকে নিজের দিক থেকে দেখে, তারপর একসাথে মিলিয়ে সেরা উত্তর দেয়। সেশন মেমোরি থাকে <b>প্রত্যেক এজেন্টের আলাদা</b> — জুয়েল যা জানল, মনুও তা থেকে শিখতে পারে।</p>
+    </div>
+  </section>
+
+  <!-- 5. Data flow -->
+  <section>
+    <h2><span class="n">৫</span> ডেটা কীভাবে প্রবাহিত হয়?</h2>
+    <div class="flow">
+      <div class="step"><b>আপনি লিখেন</b><span>চ্যাট বক্সে প্রশ্ন</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>এক্সটেনশন</b><span>পরিষ্কার করে + SSOT/সিলেবাস জোগাড়</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>সার্ভার</b><span>শ্রেণিবিভাগ + এজেন্ট নির্বাচন</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>এজেন্ট(রা)</b><span>মডেল + টুল + ওয়েব সার্চ</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>প্রমাণ-দ্বার</b><span>প্রমাণ আছে? তাহলেই দেখাবে</span></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>আপনি পান</b><span>উত্তর + প্রমাণ + শেখা সিলেবাসে</span></div>
+    </div>
+    <div class="math">
+      INPUT → SANITIZE → CONTEXT(SSOT+Syllabus+Memory) → CLASSIFY → AGENT(S) → MODEL(+Tools) → EVIDENCE_GATE → OUTPUT(verified)
+    </div>
+  </section>
+
+  <!-- 6. Why works despite LLM limits -->
+  <section>
+    <h2><span class="n">৬</span> LLM-এর সীমাবদ্ধতা থাকা সত্ত্বেও কেন ভালো কাজ করে?</h2>
+    <div class="card">
+      <p>সত্যি কথা — LLM (যে মডেলগুলো উত্তর বানায়) নিখুঁত নয়। তারা <b>ভুল করতে পারে</b>, <b>ফাঁকা উত্তর দিতে পারে</b>, <b>মিথ্যা বলতে পারে</b> (hallucination)। তাহলে কেন এই সিস্টেম ভালো?</p>
+      <ul>
+        <li><span class="check">✔</span> <b>প্রমাণ বাধ্যতামূলক:</b> মডেল যাই বলুক, প্রমাণ-দ্বার ছাড়া ইউজারের কাছে পৌঁছায় না। মিথ্যা বলার সুযোগই নেই।</li>
+        <li><span class="check">✔</span> <b>টুল-সংখ্যা নিয়ন্ত্রণ:</b> ৭১টা টুল না দিয়ে ৪০-এর কম দেয় — মডেলের হজমক্ষমতার মধ্যে। ফাঁকা উত্তর কমে যায়।</li>
+        <li><span class="check">✔</span> <b>স্মার্ট কনটেক্সট:</b> সব ডেটা না পাঠিয়ে শুধু দরকারি (SSOT + সিলেবাস) পাঠায় — টোকেন কম, উত্তর বেশি সঠিক।</li>
+        <li><span class="check">✔</span> <b>মাল্টি-এজেন্ট চেক:</b> একজনের ভুল অন্যজন ধরতে পারে — ৬ জন মিলে কাজ করলে ভুল ধরার সুযোগ বেশি।</li>
+        <li><span class="check">✔</span> <b>ব্যাকআপ provider:</b> এক provider ফেল করলে ৩৫+ মডেলের চেইন থেকে পরেরটা চেষ্টা করে।</li>
+        <li><span class="check">✔</span> <b>সিলেবাসে শেখা:</b> প্রতিবার কাজ থেকে শেখে — সিস্টেম যত চলে, তত স্মার্ট হয়।</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 7. Ethics -->
+  <section>
+    <h2><span class="n">৭</span> নৈতিকতা ও স্বচ্ছতা</h2>
+    <div class="card green">
+      <h3>আমরা যা মানি</h3>
+      <ul>
+        <li><span class="check">✔</span> <b>কোনো মিথ্যা নয়:</b> প্রমাণ না থাকলে স্পষ্ট বলি "আমার কাছে প্রমাণ নেই" — বানিয়ে বলি না।</li>
+        <li><span class="check">✔</span> <b>ভুল স্বীকার:</b> টেস্ট ফেল করলে লুকাই না — "এটা কাজ করেনি" সততার সাথে জানাই।</li>
+        <li><span class="check">✔</span> <b>কারো ক্ষতি নয়:</b> কোড পরিবর্তনের আগে সেফটি নিয়ম — টেস্ট চালিয়ে প্রমাণ ছাড়া "কাজ করেছে" বলা নিষেধ।</li>
+        <li><span class="check">✔</span> <b>স্বচ্ছতা:</b> কোন মডেল উত্তর দিল, কত টোকেন লাগল — স্ট্যাটাস বার ও লগে দেখা যায়।</li>
+        <li><span class="check">✔</span> <b>প্রাইভেসি:</b> ডিফল্ট লগে ইউজারের কথোপকথন লেখা হয় না — শুধু মেটাডেটা।</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 8. Accuracy math -->
+  <section>
+    <h2><span class="n">৮</span> নির্ভুলতা — গাণিতিক দিক দিয়ে</h2>
+    <div class="card">
+      <p>ধরা যাক, একটা মডেলের প্রতিটি উত্তরে ভুলের সম্ভাবনা <b>১০%</b> (p = 0.1)।</p>
+      <div class="math">
+        একক মডেলের সঠিকতার সম্ভাবনা:  1 − 0.1 = 0.90  (৯০%)
+        দুজন এজেন্ট একই উত্তর দিলে:   (0.90)² = 0.81  ... কিন্তু ক্রস-চেক ভুল ধরলে
+        কার্যকর সঠিকতা:  1 − (0.1 × 0.1) = 0.99  (৯৯%!)
+      </div>
+      <p>মানে — দুজন স্বাধীন এজেন্টের ভুল ধরার সম্ভাবনা গুণ হয়ে <b>কমে যায়</b>। ৬ জন এজেন্ট + প্রমাণ-দ্বার + টেস্ট যাচাই মিলিয়ে ভুলের হার অনেক কমে আসে। <b>প্রমাণ:</b> ৪৯৬টা টেস্ট, ০টা ফেল।</p>
+    </div>
+  </section>
+
+  <!-- 9. What it does / doesn't -->
+  <section>
+    <h2><span class="n">৯</span> যা করে — আর যা করে না</h2>
+    <div class="card blue">
+      <h3>✅ যা করে</h3>
+      <ul>
+        <li>কোড ব্যাখ্যা, বাগ খোঁজা, ফিক্স সাজেস্ট করা</li>
+        <li>ফাইল পড়া/লেখা, প্রজেক্ট স্ট্রাকচার বোঝা</li>
+        <li>ওয়েব সার্চ করে হালনাগাদ তথ্য আনা</li>
+        <li>বড় কাজে ৬ এজেন্ট একসাথে কাজ করা</li>
+        <li>প্রতিবার কাজ থেকে শিখে সিলেবাস বাড়ানো</li>
+      </ul>
+    </div>
+    <div class="card red">
+      <h3>❌ যা করে না</h3>
+      <ul>
+        <li>প্রমাণ ছাড়া কোনো দাবি করে না</li>
+        <li>টেস্ট না চালিয়ে "কাজ করেছে" বলে না</li>
+        <li>নিরাপত্তা ঝুঁকি তৈরি করে এমন কোড দেয় না</li>
+        <li>কারো ক্ষতি হয় এমন কাজ করে না</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <b>ZombieCoder Mission Barisal</b> — Where code and conversation meet<br>
+    <span class="small muted">
+      Owner: Sahon Srabon · Developer Zone · Dhaka, Bangladesh<br>
+      🌐 zombiecoder.my.id · ✉️ info@zombiecoder.my.id · 📞 +880 1323-626282<br>
+      Proprietary — Local Freedom Protocol
+    </span>
+  </footer>
+
+</div>
+</body>
+</html>

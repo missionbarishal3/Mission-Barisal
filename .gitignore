@@ -1,0 +1,22 @@
+# ============================================================
+# Root .gitignore — ONLY server code (s/) is pushed to repo
+# Everything else at root is excluded (secrets, editor state,
+# the VS Code extension (e/), zip backups, notes with keys).
+# ============================================================
+
+# Ignore everything at root level except s/ and .gitignore
+/*
+!.gitignore
+!s/
+
+# Root-level secrets & sensitive notes (MUST NEVER BE PUSHED)
+1.md
+Google  api doc.md
+monu.md
+project-analysis.html
+s.zip
+
+# Editor / IDE state at root
+.vscode/
+.zombiecoder/
+.idea/

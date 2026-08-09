@@ -1,0 +1,35 @@
+# ============================================================
+# s/.gitignore — Mission Barisal server (zero-dependency)
+# Secrets, runtime data, and machine-specific state are
+# excluded. Only source code + docs get committed.
+# ============================================================
+
+# ---- Secrets: NEVER commit real keys ----
+.env
+*.env
+!.env.example
+*.pem
+*.key
+
+# ---- Runtime data (rebuilt on startup) ----
+data/
+cache/
+logs/
+*.log
+
+# ---- Editor / IDE / extension state (machine-specific) ----
+.missionbarisal/
+.zombiecoder/
+.vscode/
+.idea/
+
+# ---- OS noise ----
+.DS_Store
+Thumbs.db
+
+# ---- Node ----
+node_modules/
+
+# ---- Temp ----
+*.tmp
+*.swp
