@@ -2771,6 +2771,26 @@ function authFromRequest(req) {
   return { ok: null };
 }
 
+// ─── Phase C: shared tools sanitizer (ALL input endpoints) ──
+// TOOLS_CAP_FIX hoisted from /v1/chat/completions: caps tools arrays at
+// MAX_TOOLS_LIMIT so small models don't receive ~70 tools (empty response
+// bug: "Tools provided: 71, Estimated input tokens: 50471"). Also validates
+// that tools is an array. Used by: /v1/chat/completions, /api/mission,
+// /api/v1/anti-dote, /api/input, WS chat, MCP agent_mission/agent_single.
+const MAX_TOOLS_LIMIT = 40;
+
+function sanitizeTools(tools) {
+  if (!Array.isArray(tools) || tools.length === 0) return undefined;
+  if (tools.length > MAX_TOOLS_LIMIT) {
+    log("WARN", "TOOLS_CAPPED", {
+      original: tools.length,
+      capped: MAX_TOOLS_LIMIT,
+    });
+    return tools.slice(0, MAX_TOOLS_LIMIT);
+  }
+  return tools;
+}
+
 async function refreshAgents() {
   AGENTS = await loadPersonas();
   STATS.totalAgents = AGENTS.length;
@@ -8744,7 +8764,7 @@ async function executeMcpTool(tool, args) {
         null,
         sessId,
         undefined,
-        args.tools || undefined,
+        sanitizeTools(args.tools),
       );
       return {
         content: [
@@ -12291,20 +12311,11 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       const messages = parsed.messages || [];
       const stream = parsed.stream || false;
       const temperature = parsed.temperature || 0.7;
-      let tools = parsed.tools || undefined;
-      // 🧟 TOOLS_CAP_FIX: The OpenAI-compatible stream branch passes tools
-      // straight to callModelStream (no executeSingleAgent cap). The Copilot
-      // catalog sends ~71 tools → small models return EMPTY response
-      // ("Tools provided: 71, Estimated input tokens: 50471"). Cap here so
-      // EVERY /v1/chat/completions branch is protected.
-      const MAX_TOOLS_LIMIT = 40;
-      if (Array.isArray(tools) && tools.length > MAX_TOOLS_LIMIT) {
-        log("WARN", "V1_TOOLS_CAPPED", {
-          original: tools.length,
-          capped: MAX_TOOLS_LIMIT,
-        });
-        tools = tools.slice(0, MAX_TOOLS_LIMIT);
-      }
+      // Phase C: shared sanitizer — validates array + caps at MAX_TOOLS_LIMIT
+      // (was inline TOOLS_CAP_FIX: small models return EMPTY response when
+      // handed ~70 tools, e.g. "Tools provided: 71, Estimated input tokens:
+      // 50471"). EVERY /v1/chat/completions branch is protected.
+      let tools = sanitizeTools(parsed.tools);
       const projectContext = parsed.project_context || parsed.ssot || "";
 
       // Track model usage
@@ -13186,7 +13197,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       }
 
       const userInput = parsed.input || parsed.query || parsed.prompt || "";
-      const tools = parsed.tools || undefined;
+      const tools = sanitizeTools(parsed.tools);
       let sessionId = parsed.session_id;
 
       // Track mission usage
@@ -13261,7 +13272,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       }
 
       const userInput = parsed.input || parsed.query || parsed.prompt || "";
-      const tools = parsed.tools || undefined;
+      const tools = sanitizeTools(parsed.tools);
 
       // Require input
       if (!userInput) {
@@ -13576,6 +13587,11 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         .then((body) => {
           try {
             const parsed = JSON.parse(body);
+            // Phase C: sanitize tools on the raw parsed input (if any)
+            if (parsed.tools) parsed.tools = sanitizeTools(parsed.tools);
+            if (parsed.params && parsed.params.tools) {
+              parsed.params.tools = sanitizeTools(parsed.params.tools);
+            }
             const transport = new TransportAdapter("http", res);
             // Set SSE-like headers for streaming response
             res.writeHead(200, {
@@ -13975,7 +13991,7 @@ async function handleWSMessage(socket, message) {
           agent_id: data.agent_id || data.model || DEFAULT_MODEL,
           params: {
             model: data.model || DEFAULT_MODEL,
-            tools: data.tools || undefined,
+            tools: sanitizeTools(data.tools),
             stream: true,
           },
         };
