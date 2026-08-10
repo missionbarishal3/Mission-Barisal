@@ -8774,6 +8774,12 @@ function isPathSafe(targetPath) {
   }
   // Also check the static ALLOWED_DIRS (server CWD + log/data dirs).
   for (const allowed of ALLOWED_DIRS) {
+    // Root directory ("/" on POSIX, "C:\" on Windows): everything is under it.
+    // Fix: previously `allowed + path.sep` produced "//" for root, which
+    // never matched any path — root access via ALLOWED_DIRS=/ was broken.
+    if (allowed === path.sep || allowed === path.parse(allowed).root) {
+      return true;
+    }
     if (resolved.startsWith(allowed + path.sep) || resolved === allowed) {
       return true;
     }

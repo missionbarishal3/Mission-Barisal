@@ -761,6 +761,139 @@
             margin-left: 8px;
             vertical-align: middle;
         }
+
+        /* ══ Mission Barisal v3: login overlay / users / mcp-remote / toast / responsive ══ */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .65);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px)
+        }
+
+        .modal {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-width: 420px;
+            width: 92%;
+            padding: 20px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .5)
+        }
+
+        .modal h3 {
+            margin: 0 0 14px;
+            font-size: 16px
+        }
+
+        .field {
+            margin-bottom: 12px
+        }
+
+        .field label {
+            display: block;
+            font-size: 12px;
+            color: var(--text2);
+            margin-bottom: 4px
+        }
+
+        .field input {
+            width: 100%;
+            box-sizing: border-box
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--green);
+            color: var(--text);
+            padding: 12px 18px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            z-index: 2000;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all .25s
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0)
+        }
+
+        .toast.error {
+            border-left-color: var(--red)
+        }
+
+        .user-chip {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, .3)
+        }
+
+        .mcp-server-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: var(--bg3);
+            border-radius: var(--radius);
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 6px
+        }
+
+        @media (max-width:768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr) !important
+            }
+
+            .agent-grid {
+                grid-template-columns: 1fr !important
+            }
+
+            .form-row {
+                flex-direction: column
+            }
+
+            .form-row input,
+            .form-row button {
+                width: 100% !important;
+                min-width: 0 !important
+            }
+
+            table {
+                font-size: 12px
+            }
+
+            .mcp-server-item {
+                flex-direction: column;
+                align-items: flex-start
+            }
+
+            .user-chip {
+                font-size: 10px;
+                padding: 3px 8px
+            }
+        }
     </style>
 </head>
 
@@ -780,36 +913,40 @@
             <div class="nav-item" data-page="agents" onclick="switchPage('agents')">
                 <span class="icon">🤖</span> Agents <span class="badge" id="agentBadge">6</span>
             </div>
+            <div class="nav-item" data-page="users" onclick="switchPage('users')">
+                <span class="icon">👥</span> Users <span class="badge" id="userBadge">0</span>
+            </div>
             <div class="nav-item" data-page="models" onclick="switchPage('models')">
-                <span class="icon">📦</span> Models <span class="badge" id="modelBadge">—</span>
-            </div>
-            <div class="nav-item" data-page="sessions" onclick="switchPage('sessions')">
-                <span class="icon">🔌</span> Sessions <span class="badge" id="sessionBadge">0</span>
-            </div>
-            <div class="nav-item" data-page="logs" onclick="switchPage('logs')">
-                <span class="icon">📋</span> Runtime Logs
-            </div>
-            <div class="nav-item" data-page="providers" onclick="switchPage('providers')">
-                <span class="icon">🌐</span> Providers
-            </div>
-            <div class="nav-item" data-page="chat" onclick="switchPage('chat')">
-                <span class="icon">💬</span> Agent Chat
-            </div>
-            <div class="nav-item" data-page="usage" onclick="switchPage('usage')">
-                <span class="icon">📊</span> Usage Stats
-            </div>
-            <div class="nav-item" data-page="mcp" onclick="switchPage('mcp')">
-                <span class="icon">🔌</span> MCP & Tools
-            </div>
-            <div class="nav-item" data-page="ssot" onclick="switchPage('ssot')">
-                <span class="icon">📄</span> SSOT Status
-            </div>
-            <div class="nav-item" data-page="config" onclick="switchPage('config')">
-                <span class="icon">⚙️</span> Config
-            </div>
-            <div class="nav-item" data-page="about" onclick="switchPage('about')">
-                <span class="icon">ℹ️</span> About
-            </div>
+                <div class="nav-item" data-page="models" onclick="switchPage('models')">
+                    <span class="icon">📦</span> Models <span class="badge" id="modelBadge">—</span>
+                </div>
+                <div class="nav-item" data-page="sessions" onclick="switchPage('sessions')">
+                    <span class="icon">🔌</span> Sessions <span class="badge" id="sessionBadge">0</span>
+                </div>
+                <div class="nav-item" data-page="logs" onclick="switchPage('logs')">
+                    <span class="icon">📋</span> Runtime Logs
+                </div>
+                <div class="nav-item" data-page="providers" onclick="switchPage('providers')">
+                    <span class="icon">🌐</span> Providers
+                </div>
+                <div class="nav-item" data-page="chat" onclick="switchPage('chat')">
+                    <span class="icon">💬</span> Agent Chat
+                </div>
+                <div class="nav-item" data-page="usage" onclick="switchPage('usage')">
+                    <span class="icon">📊</span> Usage Stats
+                </div>
+                <div class="nav-item" data-page="mcp" onclick="switchPage('mcp')">
+                    <span class="icon">🔌</span> MCP & Tools
+                </div>
+                <div class="nav-item" data-page="ssot" onclick="switchPage('ssot')">
+                    <span class="icon">📄</span> SSOT Status
+                </div>
+                <div class="nav-item" data-page="config" onclick="switchPage('config')">
+                    <span class="icon">⚙️</span> Config
+                </div>
+                <div class="nav-item" data-page="about" onclick="switchPage('about')">
+                    <span class="icon">ℹ️</span> About
+                </div>
         </nav>
         <div class="sidebar-footer">
             <span class="live-dot"></span> Server <span id="serverUptime">starting...</span>
@@ -892,6 +1029,41 @@
                         <div class="stat-label">🔴 Errors</div>
                     </div>
                 </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>➕ Add / Edit Agent</h3>
+                        <span style="font-size:11px;color:var(--text2)">POST /api/admin/agents — same id = update
+                            (persona বাধ্যতামূলক)</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                            <input type="text" id="newAgentId" placeholder="ID (code-guru)*"
+                                style="flex:1;min-width:110px">
+                            <input type="text" id="newAgentName" placeholder="নাম (Code Guru)"
+                                style="flex:1;min-width:110px">
+                            <input type="text" id="newAgentRole" placeholder="Role (architecture)"
+                                style="flex:1;min-width:110px">
+                            <input type="text" id="newAgentModel" placeholder="Model" style="flex:1;min-width:100px">
+                            <input type="text" id="newAgentExpertise" placeholder="Expertise"
+                                style="flex:1;min-width:110px">
+                            <input type="number" id="newAgentPriority" placeholder="Priority" style="width:80px"
+                                value="99" min="1">
+                        </div>
+                        <div style="margin-top:8px">
+                            <label style="font-size:11px;color:var(--text2)">Persona (system prompt — required)*</label>
+                            <textarea id="newAgentPersona" rows="3"
+                                style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:8px;font-size:12px"
+                                placeholder="তুমি Mission Barisal-এর agent..."></textarea>
+                        </div>
+                        <div style="margin-top:8px">
+                            <button class="btn" onclick="addAgent()">➕ Save Agent</button>
+                            <button class="btn" style="background:var(--bg3);color:var(--text2)"
+                                onclick="resetAgentForm()">↺ Reset</button>
+                            <span id="agentFormMsg" style="margin-left:8px"></span>
+                        </div>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="card-header">
                         <h3>🤖 Agent Team — Mission Barisal</h3><span style="font-size:11px;color:var(--text2)"
@@ -901,6 +1073,69 @@
                         <div class="agent-grid" id="agentGrid">
                             <div class="loading">Loading agents...</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="page" id="page-users">
+                <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+                    <div class="stat-card">
+                        <div class="stat-value" id="userTotalCount">—</div>
+                        <div class="stat-label">👥 Total Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="userActiveCount">—</div>
+                        <div class="stat-label">🟢 Active</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="userExpiredCount">—</div>
+                        <div class="stat-label">⛔ Expired / Disabled</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>➕ Create New User</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                            <input type="text" id="newUserName" placeholder="নাম (Rahim)"
+                                style="flex:1;min-width:140px">
+                            <input type="number" id="newUserTokenLimit" placeholder="টোকেন লিমিট (0=∞)"
+                                style="width:130px" min="0">
+                            <input type="number" id="newUserValidDays" placeholder="মেয়াদ দিন (0=∞)"
+                                style="width:130px" min="0">
+                            <button class="btn" onclick="createUser()">➕ Create</button>
+                        </div>
+                        <div id="newUserResult" style="margin-top:10px"></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>👥 All Users</h3>
+                    </div>
+                    <div class="card-body" style="overflow-x:auto">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>নাম</th>
+                                    <th>Status</th>
+                                    <th>টোকেন লিমিট</th>
+                                    <th>ব্যবহৃত</th>
+                                    <th>মেয়াদ</th>
+                                    <th>Expires</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTable">
+                                <tr>
+                                    <td colspan="8">
+                                        <div class="loading">Loading...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1255,110 +1490,153 @@
                 </div>
             </div>
 
-            <!-- ═══ PAGE: SSOT STATUS ═══ -->
-            <div class="page" id="page-ssot">
-                <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
-                    <div class="stat-card">
-                        <div class="stat-value" id="ssotStatus">—</div>
-                        <div class="stat-label">📄 SSOT Status</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="ssotSize">—</div>
-                        <div class="stat-label">📏 Size</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value" id="ssotLines">—</div>
-                        <div class="stat-label">📝 Lines</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>📄 SSOT Auto-Generation</h3>
-                    </div>
-                    <div class="card-body" id="ssotDetails">
-                        <div class="loading">Loading...</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>🤖 Agent Status (Runtime)</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="agentRuntimeStatus">
-                            <div class="loading">Loading...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- ═══ PAGE: CONFIG ═══ -->
-            <div class="page" id="page-config">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>⚙️ Runtime Configuration</h3>
-                        <div style="display:flex;gap:6px">
-                            <button class="refresh-btn" onclick="loadConfig()">⟳ Reload</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Key</th>
-                                    <th>Value</th>
-                                </tr>
-                            </thead>
-                            <tbody id="configTable">
-                                <tr>
-                                    <td colspan="2">
-                                        <div class="loading">Loading config...</div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>🌐 MCP Remote Servers</h3>
+                    <span style="font-size:11px;color:var(--text2)" id="mcpRemoteMeta">—</span>
+                    <button class="btn" onclick="syncMcpRemote()" style="margin-left:auto">🔄 Sync</button>
                 </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>🔗 Session Verify URL</h3>
+                <div class="card-body">
+                    <div class="form-row"
+                        style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+                        <input type="text" id="mcpRemoteName" placeholder="Server name (ঐচ্ছিক)"
+                            style="flex:1;min-width:120px">
+                        <input type="text" id="mcpRemoteUrl" placeholder="URL / command" style="flex:2;min-width:200px">
+                        <button class="btn" onclick="addMcpRemote()">➕ Add Server</button>
                     </div>
-                    <div class="card-body">
-                        <div style="display:flex;gap:8px;align-items:center">
-                            <input type="text" id="sessionVerifyInput"
-                                value="http://zombiecoder.my.id/api/verify-session"
-                                style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px">
-                            <button class="refresh-btn"
-                                onclick="updateSessionVerifyUrl(document.getElementById('sessionVerifyInput').value)"
-                                style="padding:8px 16px">🔄 Change Domain</button>
-                        </div>
-                        <p style="font-size:11px;color:var(--text2);margin-top:8px">Enter new verification URL and click
-                            "Change Domain" to update at runtime.</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>📡 Pusher Status</h3>
-                    </div>
-                    <div class="card-body" id="pusherStatusBody">
-                        <div class="loading">Checking Pusher...</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ═══ PAGE: ABOUT ═══ -->
-            <div class="page" id="page-about">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>ℹ️ About</h3>
-                    </div>
-                    <div class="card-body" id="aboutBody">
+                    <div id="mcpRemoteList">
                         <div class="loading">Loading...</div>
                     </div>
                 </div>
             </div>
+        </div>
 
-        </div><!-- /content -->
+        <!-- ═══ PAGE: SSOT STATUS ═══ -->
+        <div class="page" id="page-ssot">
+            <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+                <div class="stat-card">
+                    <div class="stat-value" id="ssotStatus">—</div>
+                    <div class="stat-label">📄 SSOT Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="ssotSize">—</div>
+                    <div class="stat-label">📏 Size</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="ssotLines">—</div>
+                    <div class="stat-label">📝 Lines</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>📄 SSOT Auto-Generation</h3>
+                </div>
+                <div class="card-body" id="ssotDetails">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>🤖 Agent Status (Runtime)</h3>
+                </div>
+                <div class="card-body">
+                    <div id="agentRuntimeStatus">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: CONFIG ═══ -->
+        <div class="page" id="page-config">
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚙️ Runtime Configuration</h3>
+                    <div style="display:flex;gap:6px">
+                        <button class="refresh-btn" onclick="loadConfig()">⟳ Reload</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="configTable">
+                            <tr>
+                                <td colspan="2">
+                                    <div class="loading">Loading config...</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>🔗 Session Verify URL</h3>
+                </div>
+                <div class="card-body">
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <input type="text" id="sessionVerifyInput" value="http://zombiecoder.my.id/api/verify-session"
+                            style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px">
+                        <button class="refresh-btn"
+                            onclick="updateSessionVerifyUrl(document.getElementById('sessionVerifyInput').value)"
+                            style="padding:8px 16px">🔄 Change Domain</button>
+                    </div>
+                    <p style="font-size:11px;color:var(--text2);margin-top:8px">Enter new verification URL and click
+                        "Change Domain" to update at runtime.</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>📡 Pusher Status</h3>
+                </div>
+                <div class="card-body" id="pusherStatusBody">
+                    <div class="loading">Checking Pusher...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ PAGE: ABOUT ═══ -->
+        <div class="page" id="page-about">
+            <div class="card">
+                <div class="card-header">
+                    <h3>ℹ️ About</h3>
+                </div>
+                <div class="card-body" id="aboutBody">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /content -->
     </div><!-- /main -->
+
+
+    <!-- ── Mission Barisal v3: Login overlay + toast + user chip ── -->
+    <div class="modal-overlay" id="loginOverlay">
+        <div class="modal">
+            <h3>🔐 Mission Barisal Admin</h3>
+            <div class="field">
+                <label>API Key (mb_...) — session verify</label>
+                <input type="password" id="loginApiKey" placeholder="mb_..." autocomplete="off">
+            </div>
+            <div class="field">
+                <label>Admin Token (ঐচ্ছিক — dev mode এ লাগে না)</label>
+                <input type="password" id="loginAdminToken" placeholder="ADMIN_TOKEN" autocomplete="off">
+            </div>
+            <div id="loginError" style="color:var(--red);font-size:12px;margin:6px 0;min-height:16px"></div>
+            <button class="btn" style="width:100%" onclick="doLogin()">🔓 Login</button>
+            <button class="btn" style="width:100%;margin-top:8px;background:var(--bg3);color:var(--text2)"
+                onclick="skipLogin()">👀 Browse (dev mode)</button>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="user-chip" id="userChip" style="display:none" onclick="doLogout()" title="Logout"></div>
 
     <script>
         // ═══════════════════════════════════════════════
@@ -1401,7 +1679,7 @@
 
             // Title
             const titles = {
-                dashboard: '📊 Dashboard', agents: '🤖 Agents', models: '📦 Models',
+                dashboard: '📊 Dashboard', agents: '🤖 Agents', users: '👥 Users', models: '📦 Models',
                 sessions: '🔌 Sessions', logs: '📋 Runtime Logs', providers: '🌐 Providers',
                 chat: '💬 Agent Chat', usage: '📊 Usage Stats', mcp: '🔌 MCP & Tools',
                 ssot: '📄 SSOT Status', config: '⚙️ Config', about: 'ℹ️ About'
@@ -1417,6 +1695,7 @@
             // Load data
             if (page === 'dashboard') loadDashboard();
             else if (page === 'agents') loadAgents();
+            else if (page === 'users') loadUsers();
             else if (page === 'models') loadModels();
             else if (page === 'sessions') loadSessions();
             else if (page === 'logs') fetchLogs();
@@ -1552,6 +1831,7 @@
             };
             // Initialize status for any new agents
             data.agents.forEach(a => { if (!AGENT_STATUS[a.id]) AGENT_STATUS[a.id] = 'idle'; });
+            cachedAgents = data.agents || [];
             document.getElementById('agentGrid').innerHTML = data.agents.map(a => {
                 const status = AGENT_STATUS[a.id] || 'idle';
                 const statusHtml = status === 'idle' ? '<span class="tag tag-green">🟢 Idle</span>' :
@@ -1565,6 +1845,10 @@
           <div class="agent-role">${a.role || a.id}</div>
           <div class="agent-desc">${(a.persona || a.description || '').slice(0, 150)}${(a.persona || '').length > 150 ? '...' : ''}</div>
           <div class="agent-id">ID: ${a.id}</div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn" style="padding:2px 10px;font-size:11px" onclick="editAgent('${a.id}')">✏️ Edit</button>
+            <button class="btn" style="padding:2px 10px;font-size:11px;background:var(--red)" onclick="deleteAgent('${a.id}')">🗑</button>
+          </div>
         </div>`;
             }).join('');
             updateAgentStatusUI();
@@ -2211,6 +2495,9 @@
           </tr>
         `).join('')
                 : '<tr><td colspan="4" style="text-align:center;color:var(--text2)">No tools available</td></tr>';
+
+            // MCP Remote servers (Mission Barisal v3)
+            loadMcpRemote();
         }
 
         // ═══════════════════════════════════════════════
@@ -2267,11 +2554,276 @@
         // ═══════════════════════════════════════════════
         //  INIT
         // ═══════════════════════════════════════════════
+
+        // ══════════════════════════════════════════════
+        //  MISSION BARISAL v3 — AUTH / USERS / AGENTS CRUD / MCP REMOTE
+        // ══════════════════════════════════════════════
+        let cachedAgents = [];
+
+        function showToast(msg, type) {
+            const t = document.getElementById('toast');
+            if (!t) return;
+            t.textContent = msg;
+            t.className = 'toast show' + (type === 'error' ? ' error' : '');
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => t.className = 'toast', 3500);
+        }
+
+        function authHeaders() {
+            const h = { 'Content-Type': 'application/json' };
+            const tok = localStorage.getItem('mb_session_token');
+            if (tok) h['Authorization'] = 'Bearer ' + tok;
+            const adm = localStorage.getItem('mb_admin_token');
+            if (adm) h['x-admin-token'] = adm;
+            return h;
+        }
+
+        async function adminFetch(path, opts) {
+            try {
+                const r = await fetch(API + path, Object.assign({ headers: authHeaders() }, opts || {}));
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok) return { error: d.error || ('HTTP ' + r.status) };
+                return d;
+            } catch (e) { return { error: e.message }; }
+        }
+
+        async function doLogin() {
+            const apiKey = document.getElementById('loginApiKey').value.trim();
+            const admTok = document.getElementById('loginAdminToken').value.trim();
+            let ok = false;
+            if (apiKey) {
+                try {
+                    const r = await fetch(API + '/api/auth/verify', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ api_key: apiKey })
+                    });
+                    const d = await r.json();
+                    if (r.ok && d.ok) {
+                        localStorage.setItem('mb_session_token', d.session_token);
+                        localStorage.setItem('mb_user_name', d.user.name);
+                        ok = true;
+                    } else {
+                        document.getElementById('loginError').textContent = '❌ ' + (d.error || 'invalid key');
+                        return;
+                    }
+                } catch (e) {
+                    document.getElementById('loginError').textContent = '❌ ' + e.message;
+                    return;
+                }
+            } else { ok = true; }
+            if (admTok) localStorage.setItem('mb_admin_token', admTok);
+            if (ok) {
+                localStorage.setItem('mb_logged_in', '1');
+                document.getElementById('loginOverlay').style.display = 'none';
+                updateUserChip();
+                showToast('✅ Welcome' + (localStorage.getItem('mb_user_name') ? ', ' + localStorage.getItem('mb_user_name') : ''));
+                refreshCurrentPage();
+            }
+        }
+
+        function skipLogin() {
+            localStorage.setItem('mb_logged_in', '1');
+            document.getElementById('loginOverlay').style.display = 'none';
+            updateUserChip();
+            showToast('👀 Dev mode browse');
+            refreshCurrentPage();
+        }
+
+        function doLogout() {
+            ['mb_session_token', 'mb_admin_token', 'mb_user_name', 'mb_logged_in'].forEach(k => localStorage.removeItem(k));
+            updateUserChip();
+            location.reload();
+        }
+
+        function updateUserChip() {
+            const chip = document.getElementById('userChip');
+            if (!chip) return;
+            if (localStorage.getItem('mb_logged_in')) {
+                const name = localStorage.getItem('mb_user_name') || 'browse';
+                chip.textContent = '👤 ' + name + ' · Logout';
+                chip.style.display = 'flex';
+            } else {
+                chip.style.display = 'none';
+            }
+        }
+
+        // ── USERS ──
+        async function loadUsers() {
+            const d = await adminFetch('/api/admin/users');
+            if (d.error) {
+                document.getElementById('usersTable').innerHTML = '<tr><td colspan="8" style="color:var(--red)">Failed: ' + d.error + '</td></tr>';
+                return;
+            }
+            const users = d.users || [];
+            document.getElementById('userTotalCount').textContent = users.length;
+            const active = users.filter(u => u.enabled === 1);
+            document.getElementById('userActiveCount').textContent = active.length;
+            document.getElementById('userExpiredCount').textContent = users.length - active.length;
+            document.getElementById('userBadge').textContent = users.length;
+            const now = Date.now();
+            document.getElementById('usersTable').innerHTML = users.length ? users.map(u => {
+                const expired = u.expires_at && u.expires_at > 0 && u.expires_at < now;
+                const status = u.enabled !== 1 ? '<span class="tag tag-red">⛔ Disabled</span>'
+                    : expired ? '<span class="tag tag-red">⛔ Expired</span>'
+                        : '<span class="tag tag-green">🟢 Active</span>';
+                return '<tr>' +
+                    '<td>' + u.id + '</td>' +
+                    '<td>' + (u.name || '—') + '</td>' +
+                    '<td>' + status + '</td>' +
+                    '<td>' + (u.token_limit || 0) + '</td>' +
+                    '<td>' + (u.token_used || 0) + '</td>' +
+                    '<td>' + (u.valid_days || 0) + '</td>' +
+                    '<td style="font-size:11px;color:var(--text2)">' + (u.expires_at && u.expires_at > 0 ? new Date(u.expires_at).toLocaleDateString() : '∞') + '</td>' +
+                    '<td>' +
+                    '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="toggleUser(' + u.id + ', ' + (u.enabled === 1 ? 0 : 1) + ')">' + (u.enabled === 1 ? 'Disable' : 'Enable') + '</button> ' +
+                    '<button class="btn" style="padding:2px 8px;font-size:11px;background:var(--red)" onclick="deleteUser(' + u.id + ')">🗑</button>' +
+                    '</td></tr>';
+            }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text2)">No users yet — create one above ☝️</td></tr>';
+        }
+
+        async function createUser() {
+            const name = document.getElementById('newUserName').value.trim();
+            const token_limit = parseInt(document.getElementById('newUserTokenLimit').value, 10) || 0;
+            const valid_days = parseInt(document.getElementById('newUserValidDays').value, 10) || 0;
+            if (!name) { showToast('❌ নাম দাও', 'error'); return; }
+            const d = await adminFetch('/api/admin/users', { method: 'POST', body: JSON.stringify({ name, token_limit, valid_days, enabled: 1 }) });
+            const box = document.getElementById('newUserResult');
+            if (d.error) {
+                box.innerHTML = '<span style="color:var(--red)">❌ ' + d.error + '</span>';
+                return;
+            }
+            box.innerHTML = '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px">' +
+                '<strong style="color:var(--green)">✅ User তৈরি!</strong><br>' +
+                'নাম: <b>' + d.user.name + '</b> · লিমিট: ' + d.user.token_limit + ' · দিন: ' + d.user.valid_days + '<br>' +
+                '<label style="font-size:11px;color:var(--text2)">API Key (একবারই দেখানো হবে — কপি করে রাখো):</label><br>' +
+                '<code style="user-select:all;word-break:break-all">' + d.api_key + '</code></div>';
+            document.getElementById('newUserName').value = '';
+            showToast('✅ User created');
+            loadUsers();
+        }
+
+        async function toggleUser(id, enabled) {
+            const d = await adminFetch('/api/admin/users/' + id, { method: 'PUT', body: JSON.stringify({ enabled }) });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('✅ Updated');
+            loadUsers();
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('সত্যিই delete করবি? (ID: ' + id + ')')) return;
+            const d = await adminFetch('/api/admin/users/' + id, { method: 'DELETE' });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('🗑 Deleted');
+            loadUsers();
+        }
+
+        // ── AGENTS CRUD ──
+        async function addAgent() {
+            const payload = {
+                id: document.getElementById('newAgentId').value.trim(),
+                name: document.getElementById('newAgentName').value.trim(),
+                role: document.getElementById('newAgentRole').value.trim(),
+                model: document.getElementById('newAgentModel').value.trim(),
+                expertise: document.getElementById('newAgentExpertise').value.trim(),
+                persona: document.getElementById('newAgentPersona').value.trim(),
+                priority: parseInt(document.getElementById('newAgentPriority').value, 10) || 99,
+                enabled: 1
+            };
+            if (!payload.id || !payload.persona) { showToast('❌ ID আর persona দুটোই দিতে হবে', 'error'); return; }
+            const d = await adminFetch('/api/admin/agents', { method: 'POST', body: JSON.stringify(payload) });
+            const box = document.getElementById('agentFormMsg');
+            if (d.error) { box.innerHTML = '<span style="color:var(--red)">❌ ' + d.error + '</span>'; return; }
+            box.innerHTML = '<span style="color:var(--green)">✅ Agent "' + d.id + '" saved!</span>';
+            resetAgentForm();
+            showToast('✅ Agent saved');
+            loadAgents();
+        }
+
+        function resetAgentForm() {
+            ['newAgentId', 'newAgentName', 'newAgentRole', 'newAgentModel', 'newAgentExpertise', 'newAgentPersona'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('newAgentPriority').value = '99';
+        }
+
+        function editAgent(id) {
+            const a = cachedAgents.find(x => x.id === id) || { id: id };
+            document.getElementById('newAgentId').value = a.id || '';
+            document.getElementById('newAgentName').value = a.name || '';
+            document.getElementById('newAgentRole').value = a.role || '';
+            document.getElementById('newAgentModel').value = a.model || '';
+            document.getElementById('newAgentExpertise').value = a.expertise || '';
+            document.getElementById('newAgentPersona').value = a.persona || a.description || '';
+            document.getElementById('newAgentPriority').value = a.priority || 99;
+            document.getElementById('agentFormMsg').innerHTML = '<span style="color:var(--text2)">✏️ Editing: ' + id + '</span>';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function deleteAgent(id) {
+            if (!confirm('Agent "' + id + '" delete করবি?')) return;
+            const d = await adminFetch('/api/admin/agents/' + encodeURIComponent(id), { method: 'DELETE' });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('🗑 Deleted');
+            loadAgents();
+        }
+
+        // ── MCP REMOTE ──
+        async function loadMcpRemote() {
+            const box = document.getElementById('mcpRemoteList');
+            if (!box) return;
+            const d = await adminFetch('/api/mcp-remote');
+            if (d.error) { box.innerHTML = '<p style="color:var(--red)">Failed: ' + d.error + '</p>'; return; }
+            document.getElementById('mcpRemoteMeta').textContent = 'env: ' + (d.env || '(none)') + ' · merged tools: ' + (d.mergedTools || 0) + '/' + (d.totalMcpTools || 0);
+            const servers = d.servers || [];
+            box.innerHTML = servers.length ? servers.map(s => {
+                const sname = (s.name || '(unnamed)').replace(/'/g, '').replace(/"/g, '&quot;');
+                const st = s.status || (s.ok ? 'connected' : 'error');
+                const okTag = st === 'connected' || s.ok ? 'tag-green' : 'tag-red';
+                return '<div class="mcp-server-item">' +
+                    '<div><strong>' + sname + '</strong><span style="font-size:11px;color:var(--text2);margin-left:8px">' + (s.url || '') + '</span></div>' +
+                    '<div><span class="tag ' + okTag + '">' + st + '</span>' +
+                    ((s.tools || []).length ? '<span style="font-size:11px;color:var(--text2);margin-left:8px">' + s.tools.length + ' tools</span>' : '') +
+                    '<button class="btn" style="padding:2px 8px;font-size:11px;background:var(--red);margin-left:8px" data-name="' + sname + '" onclick="removeMcpRemote(this.dataset.name)">Remove</button>' +
+                    '</div></div>';
+            }).join('') : '<p style="color:var(--text2)">No remote MCP servers — REMOTE_MCP_SERVERS env বা নিচের ফর্মে যোগ করো</p>';
+        }
+
+        async function addMcpRemote() {
+            const url = document.getElementById('mcpRemoteUrl').value.trim();
+            const name = document.getElementById('mcpRemoteName').value.trim();
+            if (!url) { showToast('❌ URL দাও', 'error'); return; }
+            const d = await adminFetch('/api/mcp-remote/add', { method: 'POST', body: JSON.stringify({ url, name }) });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('✅ Remote server যোগ হয়েছে' + (d.server && d.server.name ? ': ' + d.server.name : ''));
+            document.getElementById('mcpRemoteUrl').value = '';
+            loadMcpRemote();
+        }
+
+        async function syncMcpRemote() {
+            showToast('🔄 Syncing remote MCPs...');
+            const d = await adminFetch('/api/mcp-remote/sync', { method: 'POST' });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('✅ Sync done');
+            loadMcpRemote();
+        }
+
+        async function removeMcpRemote(name) {
+            if (!confirm('Remote server "' + name + '" remove করবি?')) return;
+            const d = await adminFetch('/api/mcp-remote/remove', { method: 'POST', body: JSON.stringify({ name }) });
+            if (d.error) { showToast('❌ ' + d.error, 'error'); return; }
+            showToast('🗑 Removed');
+            loadMcpRemote();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             loadDashboard();
             refreshChatSessionList();
             startAgentStatusPoll();
             initPusher();
+            // Mission Barisal v3: login gate + users badge
+            if (localStorage.getItem('mb_logged_in')) {
+                document.getElementById('loginOverlay').style.display = 'none';
+                updateUserChip();
+            }
+            loadUsers();
         });
     </script>
 
