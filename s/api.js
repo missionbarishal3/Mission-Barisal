@@ -871,6 +871,10 @@ function initModelsDb() {
         name TEXT NOT NULL,
         api_key TEXT NOT NULL UNIQUE,
         enabled INTEGER DEFAULT 1,
+        token_limit INTEGER DEFAULT 0,
+        valid_days INTEGER DEFAULT 0,
+        token_used INTEGER DEFAULT 0,
+        expires_at INTEGER DEFAULT 0,
         created_at INTEGER DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS sessions (
@@ -883,6 +887,22 @@ function initModelsDb() {
       CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
       CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     `);
+    // UI-1 migration: add token_limit / valid_days / token_used / expires_at
+    // to an existing users table (idempotent — safe on fresh installs too).
+    try {
+      const cols = MODELS_DB.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+      const addCol = (col, ddl) => {
+        if (!cols.includes(col)) {
+          MODELS_DB.prepare("ALTER TABLE users ADD COLUMN " + ddl).run();
+        }
+      };
+      addCol("token_limit", "token_limit INTEGER DEFAULT 0");
+      addCol("valid_days", "valid_days INTEGER DEFAULT 0");
+      addCol("token_used", "token_used INTEGER DEFAULT 0");
+      addCol("expires_at", "expires_at INTEGER DEFAULT 0");
+    } catch (migErr) {
+      log("WARN", "USERS_MIGRATE_FAIL", { error: migErr.message });
+    }
     log("INFO", "SQLITE_READY", { path: MODELS_DB_PATH });
     return true;
   } catch (e) {
@@ -2729,7 +2749,8 @@ function seedAdminUser() {
   try {
     const hash = sha256Hex(apiKey);
     MODELS_DB.prepare(
-      `INSERT INTO users (name, api_key, enabled, created_at) VALUES (?, ?, 1, ?)
+      `INSERT INTO users (name, api_key, enabled, token_limit, valid_days, token_used, expires_at, created_at)
+       VALUES (?, ?, 1, 0, 0, 0, 0, ?)
        ON CONFLICT(api_key) DO UPDATE SET name = excluded.name, enabled = 1`,
     ).run(name, hash, Date.now());
     log("INFO", "ADMIN_USER_SEEDED", { name });
@@ -2740,33 +2761,97 @@ function seedAdminUser() {
   }
 }
 
+// ─── UI-1: user limit helpers ───────────────────────────────
+// token_limit: 0 = unlimited, else max token units (requests/tokens).
+// valid_days:  0 = unlimited, else days from created_at (or expires_at if set).
+// Returns {ok:true, user} if within limits, else {ok:false, reason, code}.
+function checkUserLimits(user) {
+  if (!user) return { ok: false, reason: "user not found", code: 404 };
+  if (user.enabled !== undefined && user.enabled !== 1) {
+    return { ok: false, reason: "user disabled", code: 403 };
+  }
+  // Expiry from valid_days (computed at creation) OR explicit expires_at.
+  const created = user.created_at || Date.now();
+  const baseExpiry = user.expires_at && user.expires_at > 0 ? user.expires_at : 0;
+  const dayExpiry = user.valid_days && user.valid_days > 0 ? created + user.valid_days * 86400000 : 0;
+  const effectiveExpiry = baseExpiry > 0 ? baseExpiry : dayExpiry;
+  if (effectiveExpiry > 0 && Date.now() > effectiveExpiry) {
+    return { ok: false, reason: "user key expired", code: 403, expires_at: effectiveExpiry };
+  }
+  const used = user.token_used || 0;
+  const limit = user.token_limit || 0;
+  if (limit > 0 && used >= limit) {
+    return { ok: false, reason: "token limit reached", code: 429, used, limit };
+  }
+  return { ok: true, user, used, limit, expires_at: effectiveExpiry };
+}
+
+// Increment a user's token_used counter by one unit.
+function bumpUserUsage(userId) {
+  if (!MODELS_DB || !userId) return;
+  try {
+    MODELS_DB.prepare("UPDATE users SET token_used = token_used + 1 WHERE id = ?").run(userId);
+  } catch (e) {
+    log("WARN", "USER_USAGE_BUMP_FAIL", { error: e.message });
+  }
+}
+
 // authFromRequest: returns {ok:true,user} | {ok:false,reason} | {ok:null} (no auth sent)
 function authFromRequest(req) {
   if (!MODELS_DB) return { ok: null };
   const bearer = req.headers["authorization"] || "";
   const apiKey = req.headers["x-api-key"] || "";
+  // UI-1: load the full user row (id, name, enabled, limits) so
+  // checkUserLimits() can enforce token quota / expiry correctly.
+  const USER_FIELDS =
+    "id, name, enabled, token_limit, valid_days, token_used, expires_at, created_at";
   if (bearer.startsWith("Bearer ")) {
     const token = bearer.slice(7).trim();
     const sess = MODELS_DB.prepare(
-      `SELECT s.user_id, s.expires_at, u.name, u.enabled
+      `SELECT s.user_id, s.expires_at AS sess_expires_at, u.id, u.name, u.enabled,
+              u.token_limit, u.valid_days, u.token_used, u.expires_at, u.created_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
     ).get(token);
     if (!sess) return { ok: false, reason: "invalid session token" };
     if (sess.enabled !== 1) return { ok: false, reason: "user disabled" };
-    if (sess.expires_at < Date.now()) {
+    if (sess.sess_expires_at < Date.now()) {
       MODELS_DB.prepare("DELETE FROM sessions WHERE token = ?").run(token);
       return { ok: false, reason: "session expired" };
     }
-    return { ok: true, user: { id: sess.user_id, name: sess.name } };
+    return {
+      ok: true,
+      user: {
+        id: sess.user_id,
+        name: sess.name,
+        enabled: sess.enabled,
+        token_limit: sess.token_limit,
+        valid_days: sess.valid_days,
+        token_used: sess.token_used,
+        expires_at: sess.expires_at,
+        created_at: sess.created_at,
+      },
+    };
   }
   if (apiKey) {
     const hash = sha256Hex(apiKey);
     const user = MODELS_DB.prepare(
-      "SELECT id, name, enabled FROM users WHERE api_key = ?",
+      `SELECT ${USER_FIELDS} FROM users WHERE api_key = ?`,
     ).get(hash);
     if (!user) return { ok: false, reason: "invalid api key" };
     if (user.enabled !== 1) return { ok: false, reason: "user disabled" };
-    return { ok: true, user: { id: user.id, name: user.name } };
+    return {
+      ok: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        enabled: user.enabled,
+        token_limit: user.token_limit,
+        valid_days: user.valid_days,
+        token_used: user.token_used,
+        expires_at: user.expires_at,
+        created_at: user.created_at,
+      },
+    };
   }
   return { ok: null };
 }
@@ -11091,18 +11176,62 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ─── GET / — Serve UI Dashboard ────────────────────────────
+  // ─── GET / — Serve UI Dashboard (graceful: falls back to public/ or 404) ──
   if (url === "/" && method === "GET") {
-    try {
-      const htmlPath = path.resolve(__dirname, "doc", "index.html");
-      const html = fs.readFileSync(htmlPath, "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
-    } catch (e) {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Dashboard not found. Run: node z.js");
+    const candidates = [
+      path.resolve(__dirname, "public", "index.html"),
+      path.resolve(__dirname, "doc", "index.html"),
+    ];
+    for (const htmlPath of candidates) {
+      try {
+        const html = fs.readFileSync(htmlPath, "utf-8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      } catch (e) { /* try next */ }
     }
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Dashboard not found. Run: node z.js");
     return;
+  }
+
+  // ─── UI-1: graceful static serve for public/ pages ──────────
+  // Any request matching a file in s/public/ is served from there,
+  // so admin.html / chat.html / api-tester.html / docs.html work
+  // even when the server runs in a folder without those files.
+  if (method === "GET" && !url.startsWith("/api/") && !url.startsWith("/v1/") && !url.startsWith("/mcp")) {
+    const base = path.resolve(__dirname, "public");
+    let rel = url.split("?")[0].split("#")[0];
+    if (rel === "/") rel = "/index.html";
+    // Only allow safe, non-traversal relative names
+    const safeRel = rel.replace(/^\/+/, "");
+    if (safeRel && !safeRel.includes("..") && !safeRel.includes("\\")) {
+      const filePath = path.join(base, safeRel);
+      if (filePath.startsWith(base)) {
+        try {
+          const stat = fs.statSync(filePath);
+          if (stat.isFile()) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mime = {
+              ".html": "text/html; charset=utf-8",
+              ".css": "text/css; charset=utf-8",
+              ".js": "application/javascript; charset=utf-8",
+              ".json": "application/json; charset=utf-8",
+              ".png": "image/png",
+              ".jpg": "image/jpeg",
+              ".jpeg": "image/jpeg",
+              ".svg": "image/svg+xml",
+              ".ico": "image/x-icon",
+              ".woff2": "font/woff2",
+            }[ext] || "application/octet-stream";
+            const content = fs.readFileSync(filePath);
+            res.writeHead(200, { "Content-Type": mime });
+            res.end(content);
+            return;
+          }
+        } catch (e) { /* not a file → fall through */ }
+      }
+    }
   }
 
   try {
@@ -12668,7 +12797,26 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         });
         return;
       }
-      if (auth.ok === true) sessionMeta.auth_user = auth.user;
+      if (auth.ok === true) {
+        sessionMeta.auth_user = auth.user;
+        // UI-1: enforce per-user limits (token quota / expiry)
+        const lim = checkUserLimits(auth.user);
+        if (!lim.ok) {
+          log("INFO", "REQUEST", {
+            method,
+            url,
+            status: 403,
+            elapsed: Date.now() - startTime,
+            error: "Limit exceeded: " + lim.reason,
+          });
+          jsonResponse(res, 403, {
+            error: { message: "Limit exceeded: " + lim.reason, limit: lim },
+          });
+          return;
+        }
+        // Bump usage counter (per authenticated request = 1 unit)
+        bumpUserUsage(auth.user);
+      }
 
       // Get or create session
       let sessionId = parsed.session_id;
@@ -13415,7 +13563,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       return;
     }
 
-    // ─── POST /api/auth/verify (Phase B) — api_key → session token ──
+    // ─── POST /api/auth/verify (Phase B + UI-1) — api_key → session token ──
     if (url === "/api/auth/verify" && method === "POST") {
       const body = await readBody(req);
       let p;
@@ -13429,9 +13577,22 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         return;
       }
       const hash = sha256Hex(key);
-      const user = MODELS_DB.prepare("SELECT id, name, enabled FROM users WHERE api_key = ?").get(hash);
+      const user = MODELS_DB.prepare(
+        "SELECT id, name, enabled, token_limit, valid_days, token_used, expires_at, created_at FROM users WHERE api_key = ?",
+      ).get(hash);
       if (!user || user.enabled !== 1) {
         jsonResponse(res, 401, { error: "invalid api_key" });
+        return;
+      }
+      // UI-1: enforce token limit + valid_days expiry BEFORE issuing session.
+      const limitCheck = checkUserLimits(user);
+      if (!limitCheck.ok) {
+        jsonResponse(res, limitCheck.code || 403, {
+          error: limitCheck.reason,
+          used: limitCheck.used,
+          limit: limitCheck.limit,
+          expires_at: limitCheck.expires_at,
+        });
         return;
       }
       const token = crypto.randomBytes(24).toString("hex");
@@ -13445,6 +13606,12 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       jsonResponse(res, 200, {
         ok: true,
         user: { id: user.id, name: user.name },
+        usage: {
+          used: user.token_used || 0,
+          limit: user.token_limit || 0,
+          valid_days: user.valid_days || 0,
+          expires_at: limitCheck.expires_at || 0,
+        },
         session_id: sid,
         session_token: token,
         expires_at: expires,
@@ -13502,6 +13669,119 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       return;
     }
 
+    // ─── UI-1: /api/admin/users — list users (with limits) ─────
+    if (url === "/api/admin/users" && method === "GET") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const rows = MODELS_DB.prepare(
+        `SELECT id, name, enabled, token_limit, valid_days, token_used, expires_at, created_at
+         FROM users ORDER BY id ASC`,
+      ).all();
+      jsonResponse(res, 200, { count: rows.length, users: rows });
+      return;
+    }
+
+    // ─── UI-1: /api/admin/users — create user → returns API key ──
+    if (url === "/api/admin/users" && method === "POST") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const body = await readBody(req);
+      let a;
+      try { a = JSON.parse(body); } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      const name = (a.name || "user").toString().trim();
+      if (!name) {
+        jsonResponse(res, 400, { error: "name is required" });
+        return;
+      }
+      const tokenLimit = Math.max(0, parseInt(a.token_limit, 10) || 0);
+      const validDays = Math.max(0, parseInt(a.valid_days, 10) || 0);
+      const apiKey = "mb_" + crypto.randomBytes(16).toString("hex");
+      const hash = sha256Hex(apiKey);
+      const now = Date.now();
+      try {
+        MODELS_DB.prepare(
+          `INSERT INTO users (name, api_key, enabled, token_limit, valid_days, token_used, expires_at, created_at)
+           VALUES (?, ?, ?, ?, ?, 0, 0, ?)`,
+        ).run(name, hash, a.enabled === undefined ? 1 : a.enabled ? 1 : 0, tokenLimit, validDays, now);
+        log("INFO", "USER_CREATED", { name, token_limit: tokenLimit, valid_days: validDays });
+        jsonResponse(res, 200, {
+          ok: true,
+          user: { name, token_limit: tokenLimit, valid_days: validDays, enabled: 1 },
+          api_key: apiKey,
+          note: "api_key shown once — store it safely (stored as sha256 hash on server)",
+        });
+      } catch (e) {
+        jsonResponse(res, 500, { error: "create failed: " + e.message });
+      }
+      return;
+    }
+
+    // ─── UI-1: /api/admin/users/:id — update limits / enabled ──
+    if (url.startsWith("/api/admin/users/") && method === "PUT") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const id = parseInt(decodeURIComponent(url.slice("/api/admin/users/".length)), 10);
+      if (!id) { jsonResponse(res, 400, { error: "invalid user id" }); return; }
+      const body = await readBody(req);
+      let a;
+      try { a = JSON.parse(body); } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      const sets = [];
+      const vals = [];
+      if (a.name !== undefined) { sets.push("name = ?"); vals.push(String(a.name).trim()); }
+      if (a.enabled !== undefined) { sets.push("enabled = ?"); vals.push(a.enabled ? 1 : 0); }
+      if (a.token_limit !== undefined) { sets.push("token_limit = ?"); vals.push(Math.max(0, parseInt(a.token_limit, 10) || 0)); }
+      if (a.valid_days !== undefined) { sets.push("valid_days = ?"); vals.push(Math.max(0, parseInt(a.valid_days, 10) || 0)); }
+      if (a.expires_at !== undefined) { sets.push("expires_at = ?"); vals.push(parseInt(a.expires_at, 10) || 0); }
+      if (sets.length === 0) { jsonResponse(res, 400, { error: "nothing to update" }); return; }
+      vals.push(id);
+      MODELS_DB.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...vals);
+      const row = MODELS_DB.prepare("SELECT id, name, enabled, token_limit, valid_days, token_used, expires_at, created_at FROM users WHERE id = ?").get(id);
+      jsonResponse(res, 200, { ok: true, user: row });
+      return;
+    }
+
+    // ─── UI-1: /api/admin/users/:id — delete user ─────────────
+    if (url.startsWith("/api/admin/users/") && method === "DELETE") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const id = parseInt(decodeURIComponent(url.slice("/api/admin/users/".length)), 10);
+      if (!id) { jsonResponse(res, 400, { error: "invalid user id" }); return; }
+      MODELS_DB.prepare("DELETE FROM sessions WHERE user_id = ?").run(id);
+      MODELS_DB.prepare("DELETE FROM users WHERE id = ?").run(id);
+      jsonResponse(res, 200, { ok: true, id });
+      return;
+    }
+
     // ─── POST /api/mission ──────────────────────────────────
     if (url === "/api/mission" && method === "POST") {
       const body = await readBody(req);
@@ -13516,6 +13796,23 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       const userInput = parsed.input || parsed.query || parsed.prompt || "";
       const tools = sanitizeTools(parsed.tools);
       let sessionId = parsed.session_id;
+
+      // UI-1: optional auth on /api/mission — enforce per-user limits
+      const mAuth = authFromRequest(req);
+      if (mAuth.ok === false) {
+        jsonResponse(res, 401, { error: "Unauthorized: " + mAuth.reason });
+        return;
+      }
+      if (mAuth.ok === true) {
+        const lim = checkUserLimits(mAuth.user);
+        if (!lim.ok) {
+          jsonResponse(res, 403, {
+            error: { message: "Limit exceeded: " + lim.reason, limit: lim },
+          });
+          return;
+        }
+        bumpUserUsage(mAuth.user);
+      }
 
       // Track mission usage
       trackAgentUsage("mission");
