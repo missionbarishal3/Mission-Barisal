@@ -47,7 +47,7 @@ function loadEnv() {
 function getDefaultConfig() {
   return {
     version: VERSION,
-    serverPort: Number(process.env.PORT) || 9999,
+    serverPort: Number(process.env.SERVER_PORT) || Number(process.env.PORT) || 5000,
     udsPath:
       process.env.ZOMBIECODER_UDS_PATH ||
       path.join(os.tmpdir(), "zombiecoder", "mcp.sock"),
@@ -98,7 +98,10 @@ function startAll() {
     } else {
       const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
       console.log("[CONFIG] Loaded:", CONFIG_PATH);
-      if (cfg.serverPort) process.env.PORT = String(cfg.serverPort);
+      // Env vars take priority over config.json (so PORT/SERVER_PORT in .env win)
+      if (cfg.serverPort && !process.env.SERVER_PORT && !process.env.PORT) {
+        process.env.PORT = String(cfg.serverPort);
+      }
     }
   } catch (err) {
     console.warn("[CONFIG] Warning — continuing without config:", err.message);
