@@ -127,6 +127,11 @@ Each agent is a specialized AI with a unique Bengali persona, expertise, and ass
 | `perf-wizard` | পারফরম্যান্স উইজার্ড - রাশেদ | Performance | `mimo-v2.5-free` | Optimization, caching, profiling |
 | `doc-king` | ডকুমেন্টেশন রাজা - হালিম | Documentation | `big-pickle` | API docs, README, technical writing |
 | `qa-tyrant` | কোয়ালিটি তস্কর - মজনু | Quality | `big-pickle` | Testing, QA, code quality, consensus |
+| `team-heart` | টিম হার্ট - জারা | Team Heart | `deepseek-v4-flash-free` | Harmony, morale, delivery, team coordination |
+| `customer-experience-specialist` | Customer Experience Specialist | Customer Experience | `deepseek-v4-flash-free` | Omnichannel support, retention, complaint resolution |
+| `ecommerce-operations-analyst` | E-Commerce Operations Analyst | E-Commerce | `deepseek-v4-flash-free` | Ad copy, catalog optimization, analytics, strategy |
+
+> **Note:** The last 3 agents load dynamically — `team-heart` from `PERSONAS.md`, and the 2 custom agents from either `.zombiecoder/agents/*.md` (local, YAML frontmatter, git-ignored) or `PERSONAS.md` (deployed, git-tracked). Custom `.zombiecoder/agents/*.md` files override same-id `PERSONAS.md` entries.
 
 ### Agent Rules
 
@@ -391,6 +396,45 @@ curl -X POST http://localhost:5000/v1/chat/completions \
   }'
 ```
 
+#### Chat with team-heart (Team Heart)
+```bash
+curl -X POST http://localhost:5000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "team-heart",
+    "messages": [
+      {"role": "user", "content": "টিমের মোটিভেশন কমে গেছে, কী করব?"}
+    ],
+    "stream": false
+  }'
+```
+
+#### Chat with customer-experience-specialist (Customer Experience)
+```bash
+curl -X POST http://localhost:5000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "customer-experience-specialist",
+    "messages": [
+      {"role": "user", "content": "অর্ডার ট্র্যাকিং কিভাবে করব?"}
+    ],
+    "stream": false
+  }'
+```
+
+#### Chat with ecommerce-operations-analyst (E-Commerce)
+```bash
+curl -X POST http://localhost:5000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ecommerce-operations-analyst",
+    "messages": [
+      {"role": "user", "content": "Facebook-এ প্রোডাক্ট অ্যাড লিখো"}
+    ],
+    "stream": false
+  }'
+```
+
 #### Mission Mode with Streaming
 ```bash
 curl -X POST http://localhost:5000/v1/chat/completions \
@@ -425,7 +469,12 @@ curl -X POST http://localhost:5000/v1/chat/completions \
 
 ---
 
-### REMOTE SERVER (https://g.zombiecoder.my.id)
+### REMOTE SERVER (https://g.zombiecoder.my.id / https://mission-barisal.onrender.com)
+
+> **Two production endpoints:**
+> - `https://g.zombiecoder.my.id` — custom domain (dev/self-hosted)
+> - `https://mission-barisal.onrender.com` — Render.com deployment (auto-deploys from `main` branch)
+> Replace the host in any command below with either URL.
 
 #### Health Check
 ```bash
@@ -606,6 +655,11 @@ Use this matrix to test each agent with different types of questions.
 | `doc-king` | API Docs | "REST API endpoint documentation লেখো" | Request/response examples, status codes |
 | `qa-tyrant` | Test Strategy | "Testing pyramid কি?" | Unit → Integration → E2E explanation |
 | `qa-tyrant` | Code Review | "এই কোডে কি সমস্যা আছে?" | Quality issues, edge cases, suggestions |
+| `team-heart` | Team Morale | "টিমের মোটিভেশন কমে গেছে, কী করব?" | Encouraging, playful, harmony-focused response |
+| `customer-experience-specialist` | Customer Query | "অর্ডার ট্র্যাকিং কিভাবে করব?" | Empathetic, transparent, omnichannel response |
+| `customer-experience-specialist` | Complaint | "প্রোডাক্ট খারাপ পেয়েছি, রিটার্ন চাই" | De-escalation, structured resolution, policy-based |
+| `ecommerce-operations-analyst` | Ad Copy | "Facebook-এ প্রোডাক্ট অ্যাড লিখো" | Persuasive, data-driven, high-CTR ad copy |
+| `ecommerce-operations-analyst` | Analytics | "কনভার্সন রেট কমছে কেন?" | Funnel analysis, metrics, actionable insights |
 
 ---
 
