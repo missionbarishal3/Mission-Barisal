@@ -847,6 +847,21 @@ function initModelsDb() {
       CREATE INDEX IF NOT EXISTS idx_models_name ON models(name);
       CREATE INDEX IF NOT EXISTS idx_models_api ON models(api_model);
       CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
+
+      -- PHASE A (2026-08-10): agents table — DB-first persona source.
+      -- PERSONAS.md + .zombiecoder/agents/*.md remain as fallback/override (100% kept).
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        role TEXT,
+        model TEXT,
+        expertise TEXT,
+        persona TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        priority INTEGER DEFAULT 99,
+        updated_at INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_agents_enabled ON agents(enabled);
     `);
     log("INFO", "SQLITE_READY", { path: MODELS_DB_PATH });
     return true;
@@ -2498,6 +2513,35 @@ async function loadPersonas() {
   const merged = [];
   const seen = new Set();
 
+  // 0. DB agents first (PHASE A) — enabled rows from the agents table.
+  //    DB is the primary source; files below fill gaps / override.
+  if (MODELS_DB) {
+    try {
+      const rows = MODELS_DB.prepare(
+        "SELECT id, name, role, model, expertise, persona, enabled, priority FROM agents WHERE enabled = 1 ORDER BY priority ASC, name ASC"
+      ).all();
+      for (const r of rows) {
+        if (!r.id) continue;
+        seen.add(r.id);
+        merged.push({
+          id: r.id,
+          name: r.name || r.id,
+          model: r.model || "deepseek-v4-flash-free",
+          role: r.role || "general",
+          expertise: r.expertise || "",
+          priority: r.priority || 99,
+          persona: r.persona || "",
+          source: "db",
+        });
+      }
+      if (rows.length > 0) {
+        log("INFO", "PERSONAS_DB_LOADED", { count: rows.length });
+      }
+    } catch (e) {
+      log("WARN", "PERSONAS_DB_READ_FAIL", { error: e.message });
+    }
+  }
+
   // 1. Default agents from PERSONAS.md (## agent: format)
   if (fs.existsSync(PERSONAS_FILE)) {
     try {
@@ -2606,6 +2650,55 @@ async function loadPersonas() {
 // ─── Git Runtime Download — Generic File Downloader ────────
 // "Agent personas, skills, instructions fetched from git at runtime"
 // Zero dependency, pure https.
+
+// ─── Agents DB Seed + Refresh (PHASE A) ────────────────────
+// Seed: on first run, populate the agents table from PERSONAS.md so
+// DB-first loading returns the SAME agents as today (zero behavior change).
+// Refresh: re-run loadPersonas() into the AGENTS global (used by admin CRUD).
+function seedAgentsFromPersonas() {
+  if (!MODELS_DB) return { ok: false, error: "sqlite unavailable" };
+  try {
+    const existing = MODELS_DB.prepare("SELECT COUNT(*) c FROM agents").get();
+    if (existing && existing.c > 0) {
+      return { ok: true, seeded: 0, note: "agents table already seeded" };
+    }
+    if (!fs.existsSync(PERSONAS_FILE)) {
+      return { ok: true, seeded: 0, note: "no PERSONAS.md to seed from" };
+    }
+    const content = fs.readFileSync(PERSONAS_FILE, "utf8");
+    const agents = parsePersonas(content);
+    if (agents.length === 0) {
+      return { ok: true, seeded: 0, note: "no agents parsed from PERSONAS.md" };
+    }
+    const ins = MODELS_DB.prepare(`
+      INSERT INTO agents (id, name, role, model, expertise, persona, enabled, priority, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `);
+    let seeded = 0;
+    const now = Date.now();
+    for (const a of agents) {
+      try {
+        ins.run(a.id, a.name || a.id, a.role || "general", a.model || "", a.expertise || "", a.persona || "", a.priority || 99, now);
+        seeded++;
+      } catch (e) {
+        log("WARN", "AGENT_SEED_SKIP", { id: a.id, error: e.message });
+      }
+    }
+    log("INFO", "AGENTS_SEEDED", { from: "PERSONAS.md", count: seeded });
+    return { ok: true, seeded };
+  } catch (e) {
+    log("WARN", "AGENTS_SEED_FAIL", { error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
+async function refreshAgents() {
+  AGENTS = await loadPersonas();
+  STATS.totalAgents = AGENTS.length;
+  return AGENTS;
+}
+
+// ─── Git Runtime Download — Generic File Downloader ────────
 
 function downloadFromGit(url) {
   return new Promise((resolve) => {
@@ -11098,6 +11191,95 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ─── PHASE A: Admin Agents CRUD (DB-first) ─────────────────
+    // Protected by ADMIN_TOKEN env when set; open in dev mode (no token set).
+    function adminAuthorized(req) {
+      if (!process.env.ADMIN_TOKEN) return true;
+      return req.headers["x-admin-token"] === process.env.ADMIN_TOKEN;
+    }
+
+    if (url === "/api/admin/agents" && method === "GET") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const rows = MODELS_DB.prepare(
+        "SELECT id, name, role, model, expertise, enabled, priority, updated_at FROM agents ORDER BY priority ASC, name ASC"
+      ).all();
+      jsonResponse(res, 200, { count: rows.length, agents: rows });
+      return;
+    }
+
+    if (url === "/api/admin/agents" && method === "POST") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const body = await readBody(req);
+      let a;
+      try {
+        a = JSON.parse(body);
+      } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      if (!a || !a.id || !a.persona) {
+        jsonResponse(res, 400, { error: "id and persona are required" });
+        return;
+      }
+      const now = Date.now();
+      MODELS_DB.prepare(`
+        INSERT INTO agents (id, name, role, model, expertise, persona, enabled, priority, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          role = excluded.role,
+          model = excluded.model,
+          expertise = excluded.expertise,
+          persona = excluded.persona,
+          enabled = excluded.enabled,
+          priority = excluded.priority,
+          updated_at = excluded.updated_at
+      `).run(
+        a.id,
+        a.name || a.id,
+        a.role || "general",
+        a.model || "",
+        a.expertise || "",
+        a.persona,
+        a.enabled === undefined ? 1 : a.enabled ? 1 : 0,
+        a.priority || 99,
+        now,
+      );
+      await refreshAgents();
+      jsonResponse(res, 200, { ok: true, id: a.id, totalAgents: AGENTS.length });
+      return;
+    }
+
+    if (url.startsWith("/api/admin/agents/") && method === "DELETE") {
+      if (!adminAuthorized(req)) {
+        jsonResponse(res, 401, { error: "Unauthorized: ADMIN_TOKEN required" });
+        return;
+      }
+      if (!MODELS_DB) {
+        jsonResponse(res, 503, { error: "sqlite unavailable" });
+        return;
+      }
+      const id = decodeURIComponent(url.slice("/api/admin/agents/".length));
+      MODELS_DB.prepare("DELETE FROM agents WHERE id = ?").run(id);
+      await refreshAgents();
+      jsonResponse(res, 200, { ok: true, id, totalAgents: AGENTS.length });
+      return;
+    }
+
     // ─── GET /admin/:file — External Admin Panel (static files) ─
     // Serves files from /home/sahon/dev/sarver/admin/ directory
     // Injects dynamic BASE_URL into HTML files before serving
@@ -13669,6 +13851,15 @@ const FALLBACK_PERSONA_PREFIX =
   "তুমি ZombieCoder AI — বাংলায় উত্তর দাও, প্রমাণ ছাড়া দাবি কোরো না।";
 
 async function init() {
+  // PHASE A: open SQLite models DB FIRST so that seedAgentsFromPersonas()
+  // and DB-first loadPersonas() see MODELS_DB ready. initModelsDb also runs
+  // later in this function; the later call is guarded to avoid re-opening.
+  if (!MODELS_DB) initModelsDb();
+  if (MODELS_DB) loadModelsFromDb();
+
+  // PHASE A: seed agents table from PERSONAS.md on first boot (idempotent),
+  // then load DB-first. PERSONAS.md remains as fallback for ids not in DB.
+  seedAgentsFromPersonas();
   AGENTS = await loadPersonas();
   STATS.totalAgents = AGENTS.length;
 
@@ -13834,7 +14025,8 @@ async function init() {
 
   // ─── Startup: SQLite models DB + auto-sync ────────────────────
   // 1. Open/create the models database (node:sqlite, zero-dependency)
-  initModelsDb();
+  //    Guarded: already opened at the top of init() for DB-first personas.
+  if (!MODELS_DB) initModelsDb();
   // 2. Load previously-synced models from DB — DB wins over env,
   //    so a fresh sync from the last run is the source of truth.
   loadModelsFromDb();
