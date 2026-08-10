@@ -8442,6 +8442,243 @@ function loadExternalTools() {
 }
 loadExternalTools();
 
+// ══════════════════════════════════════════════════════════════
+// 🧟 PHASE D: OUTBOUND MCP CLIENT (2026-08-10, Code Guru - Monu)
+// This server becomes an MCP *client*: it connects to REMOTE MCP
+// servers (JSON-RPC 2.0 over HTTP POST), discovers their tools, and
+// can call them. Remote tools are merged into MCP_TOOLS with the
+// prefix `remote__<server>__<tool>` so local tools are not shadowed.
+// Config via env: REMOTE_MCP_SERVERS = "url1,url2" OR JSON array:
+//   [{"url":"https://b.zombiecoder.my.id/mcp","name":"zombie"}]
+// ══════════════════════════════════════════════════════════════
+
+// Generic tool: lets agents call ANY remote MCP server tool by name.
+MCP_TOOLS.remote_mcp_call = {
+  description:
+    "Call a tool on a remote MCP server (outbound MCP client). Use this to invoke tools exposed by connected remote MCP servers.",
+  params: {
+    server: {
+      type: "string",
+      description: "Remote MCP server name (see /api/mcp-remote)",
+    },
+    tool: { type: "string", description: "Remote tool name to call" },
+    args: { type: "object", description: "Arguments for the remote tool" },
+  },
+  required: ["server", "tool"],
+};
+
+const mcpRemoteClients = new Map(); // name -> { url, name, tools:[], status, lastSync, error }
+
+function parseRemoteMcpServers() {
+  const raw = process.env.REMOTE_MCP_SERVERS || "";
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const arr = JSON.parse(trimmed);
+      return arr.filter((s) => s && s.url);
+    } catch (e) {
+      log("WARN", "REMOTE_MCP_PARSE_FAIL", { error: e.message });
+      return [];
+    }
+  }
+  return trimmed.split(",").filter(Boolean).map((url) => ({ url: url.trim() }));
+}
+
+function mcpRemoteRequest(url, method, params, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    let lib;
+    try {
+      lib = url.startsWith("https://") ? https : http;
+    } catch (e) {
+      resolve({ error: "invalid url: " + url });
+      return;
+    }
+    const payload = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: params || {},
+    });
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      resolve({ error: "invalid url: " + url });
+      return;
+    }
+    const req = lib.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: parsed.pathname || "/",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+          "User-Agent": "MissionBarisal-OutboundMCP/3.2.1",
+        },
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve({ error: "non-json response: " + data.slice(0, 200) });
+          }
+        });
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ error: "timeout after " + timeoutMs + "ms" });
+    });
+    req.on("error", (e) => resolve({ error: e.message }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function discoverRemoteMCP(server) {
+  const { url, name } = server;
+  let host = url;
+  try {
+    host = new URL(url).hostname;
+  } catch (e) {
+    /* keep raw url as name fallback */
+  }
+  const entry = {
+    url,
+    name: name || host,
+    tools: [],
+    status: "connecting",
+    lastSync: 0,
+    error: "",
+    addedAt: Date.now(),
+  };
+  mcpRemoteClients.set(entry.name, entry);
+  try {
+    const init = await mcpRemoteRequest(url, "initialize", {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "mission-barisal-gateway", version: "3.2.1" },
+    });
+    if (init.error) {
+      entry.status = "error";
+      entry.error = init.error;
+      return entry;
+    }
+    const list = await mcpRemoteRequest(url, "tools/list", {});
+    if (list.error) {
+      entry.status = "error";
+      entry.error = list.error;
+      return entry;
+    }
+    entry.tools = (list.result && list.result.tools) || [];
+    entry.status = "connected";
+    entry.lastSync = Date.now();
+    log("INFO", "REMOTE_MCP_CONNECTED", {
+      server: entry.name,
+      tools: entry.tools.length,
+    });
+  } catch (e) {
+    entry.status = "error";
+    entry.error = e.message;
+    log("WARN", "REMOTE_MCP_DISCOVER_FAIL", {
+      server: entry.name,
+      error: e.message,
+    });
+  }
+  return entry;
+}
+
+async function syncAllRemoteMCPs() {
+  const servers = parseRemoteMcpServers();
+  if (servers.length === 0) return { ok: true, synced: 0 };
+  let synced = 0;
+  for (const s of servers) {
+    await discoverRemoteMCP(s);
+    synced++;
+  }
+  log("INFO", "REMOTE_MCP_SYNC_DONE", { servers: synced });
+  return { ok: true, synced };
+}
+
+// Merge remote tools into MCP_TOOLS with remote__<server>__<tool> prefix.
+function mergeRemoteMcpTools() {
+  let added = 0;
+  for (const [name, client] of mcpRemoteClients) {
+    if (client.status !== "connected") continue;
+    for (const t of client.tools) {
+      const fullName = "remote__" + name + "__" + t.name;
+      if (MCP_TOOLS[fullName]) continue; // already merged
+      MCP_TOOLS[fullName] = {
+        description:
+          "[remote:" + name + "] " + (t.description || t.name),
+        params:
+          (t.inputSchema && t.inputSchema.properties) || {
+            args: { type: "object" },
+          },
+        required: (t.inputSchema && t.inputSchema.required) || [],
+      };
+      added++;
+    }
+  }
+  if (added > 0) log("INFO", "REMOTE_MCP_TOOLS_MERGED", { added });
+  return added;
+}
+
+async function executeRemoteMcpTool(server, tool, args) {
+  const client = mcpRemoteClients.get(server);
+  if (!client) {
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            "Unknown remote MCP server: " +
+            server +
+            " (see /api/mcp-remote)",
+        },
+      ],
+    };
+  }
+  if (client.status !== "connected") {
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            "Remote MCP server '" +
+            server +
+            "' not connected: " +
+            client.error,
+        },
+      ],
+    };
+  }
+  const res = await mcpRemoteRequest(client.url, "tools/call", {
+    name: tool,
+    arguments: args || {},
+  });
+  if (res.error) {
+    return {
+      content: [{ type: "text", text: "Remote tool error: " + res.error }],
+    };
+  }
+  const result = res.result || {};
+  const text = (result.content || [])
+    .map((c) => (c.type === "text" ? c.text : JSON.stringify(c)))
+    .join("\n");
+  return {
+    content: [{ type: "text", text: text || JSON.stringify(result) }],
+  };
+}
+
 function isPathSafe(targetPath) {
   const resolved = path.resolve(targetPath);
   // Allow access within the current MCP working directory (the user's workspace).
@@ -8468,6 +8705,19 @@ function isPathSafe(targetPath) {
 async function executeMcpTool(tool, args) {
   const id = nextMcpId++;
   log("INFO", "MCP_CALL", { tool, args, id });
+
+  // 🧟 PHASE D: outbound MCP delegation — remote__<server>__<tool> prefix
+  if (tool === "remote_mcp_call") {
+    return await executeRemoteMcpTool(args.server, args.tool, args.args || {});
+  }
+  if (tool.startsWith("remote__")) {
+    const parts = tool.split("__");
+    if (parts.length >= 3) {
+      const server = parts[1];
+      const remoteTool = parts.slice(2).join("__");
+      return await executeRemoteMcpTool(server, remoteTool, args);
+    }
+  }
 
   switch (tool) {
     case "read_file": {
@@ -12111,6 +12361,73 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
       return;
     }
 
+    // ─── GET /api/mcp-remote (Phase D) — outbound MCP status ──
+    // Lists remote MCP servers this gateway connects TO (outbound client),
+    // their discovered tools, and how many merged into MCP_TOOLS.
+    if (url === "/api/mcp-remote" && method === "GET") {
+      jsonResponse(res, 200, {
+        ok: true,
+        env: process.env.REMOTE_MCP_SERVERS || "",
+        servers: Array.from(mcpRemoteClients.values()),
+        mergedTools: Object.keys(MCP_TOOLS).filter((k) =>
+          k.startsWith("remote__"),
+        ).length,
+        totalMcpTools: Object.keys(MCP_TOOLS).length,
+      });
+      return;
+    }
+
+    // ─── POST /api/mcp-remote/sync (Phase D) — re-discover ──
+    if (url === "/api/mcp-remote/sync" && method === "POST") {
+      const result = await syncAllRemoteMCPs();
+      const merged = mergeRemoteMcpTools();
+      jsonResponse(res, 200, { ok: true, ...result, merged });
+      return;
+    }
+
+    // ─── POST /api/mcp-remote/add (Phase D) — add at runtime ──
+    if (url === "/api/mcp-remote/add" && method === "POST") {
+      const body = await readBody(req);
+      let p;
+      try {
+        p = JSON.parse(body);
+      } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      if (!p.url) {
+        jsonResponse(res, 400, { error: "url required" });
+        return;
+      }
+      const entry = await discoverRemoteMCP({ url: p.url, name: p.name || "" });
+      const merged = mergeRemoteMcpTools();
+      jsonResponse(res, 200, { ok: true, server: entry, merged });
+      return;
+    }
+
+    // ─── POST /api/mcp-remote/remove (Phase D) — drop server ──
+    if (url === "/api/mcp-remote/remove" && method === "POST") {
+      const body = await readBody(req);
+      let p;
+      try {
+        p = JSON.parse(body);
+      } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      if (!p.name) {
+        jsonResponse(res, 400, { error: "name required" });
+        return;
+      }
+      const removed = mcpRemoteClients.delete(p.name);
+      // remove merged tools for this server
+      for (const k of Object.keys(MCP_TOOLS)) {
+        if (k.startsWith("remote__" + p.name + "__")) delete MCP_TOOLS[k];
+      }
+      jsonResponse(res, 200, { ok: true, removed });
+      return;
+    }
+
     // ─── POST /api/set-working-dir ──────────────────────────
     // Non-MCP endpoint for zombieBridge to set working directory and auto-generate SSOT.
     // Simpler than formatting a full MCP JSON-RPC message.
@@ -14336,6 +14653,17 @@ async function init() {
     console.log("[SSOT] apnar client-er project folder-e");
     console.log("[SSOT] .zombiecoder/SSOT.md auto-generate hobe!\n");
   });
+
+  // 🧟 PHASE D: outbound MCP client — discover remote servers
+  // (non-blocking, fires after listen so startup is never delayed).
+  syncAllRemoteMCPs()
+    .then((r) => {
+      const merged = mergeRemoteMcpTools();
+      if (r.synced > 0) {
+        log("INFO", "REMOTE_MCP_STARTUP", { synced: r.synced, merged });
+      }
+    })
+    .catch((e) => log("WARN", "REMOTE_MCP_STARTUP_FAIL", { error: e.message }));
 }
 
 // ══════════════════════════════════════════════════════════════
