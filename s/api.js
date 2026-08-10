@@ -862,6 +862,26 @@ function initModelsDb() {
         updated_at INTEGER DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_agents_enabled ON agents(enabled);
+
+      -- PHASE B (2026-08-10): users + sessions tables (minimal API auth).
+      -- api_key is stored as sha256 hex (never plaintext). sessions hold
+      -- short-lived bearer tokens issued by /api/auth/verify.
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        api_key TEXT NOT NULL UNIQUE,
+        enabled INTEGER DEFAULT 1,
+        created_at INTEGER DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        token TEXT NOT NULL,
+        created_at INTEGER DEFAULT 0,
+        expires_at INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     `);
     log("INFO", "SQLITE_READY", { path: MODELS_DB_PATH });
     return true;
@@ -2690,6 +2710,65 @@ function seedAgentsFromPersonas() {
     log("WARN", "AGENTS_SEED_FAIL", { error: e.message });
     return { ok: false, error: e.message };
   }
+}
+
+// ─── Phase B: API Auth (users + sessions in SQLite) ────────
+// Users: id, name, api_key (sha256 at rest), enabled.
+// Sessions: bearer tokens issued on /api/auth/verify, checked by authFromRequest().
+// SESSION_TTL_MS is already declared at the top (line ~147); reused here.
+
+function sha256Hex(str) {
+  return crypto.createHash("sha256").update(String(str)).digest("hex");
+}
+
+function seedAdminUser() {
+  if (!MODELS_DB) return { ok: false, error: "sqlite unavailable" };
+  const name = process.env.ADMIN_USER || "admin";
+  const apiKey = process.env.ADMIN_API_KEY || "";
+  if (!apiKey) return { ok: true, note: "ADMIN_API_KEY not set — no seed" };
+  try {
+    const hash = sha256Hex(apiKey);
+    MODELS_DB.prepare(
+      `INSERT INTO users (name, api_key, enabled, created_at) VALUES (?, ?, 1, ?)
+       ON CONFLICT(api_key) DO UPDATE SET name = excluded.name, enabled = 1`,
+    ).run(name, hash, Date.now());
+    log("INFO", "ADMIN_USER_SEEDED", { name });
+    return { ok: true };
+  } catch (e) {
+    log("WARN", "ADMIN_USER_SEED_FAIL", { error: e.message });
+    return { ok: false, error: e.message };
+  }
+}
+
+// authFromRequest: returns {ok:true,user} | {ok:false,reason} | {ok:null} (no auth sent)
+function authFromRequest(req) {
+  if (!MODELS_DB) return { ok: null };
+  const bearer = req.headers["authorization"] || "";
+  const apiKey = req.headers["x-api-key"] || "";
+  if (bearer.startsWith("Bearer ")) {
+    const token = bearer.slice(7).trim();
+    const sess = MODELS_DB.prepare(
+      `SELECT s.user_id, s.expires_at, u.name, u.enabled
+       FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
+    ).get(token);
+    if (!sess) return { ok: false, reason: "invalid session token" };
+    if (sess.enabled !== 1) return { ok: false, reason: "user disabled" };
+    if (sess.expires_at < Date.now()) {
+      MODELS_DB.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+      return { ok: false, reason: "session expired" };
+    }
+    return { ok: true, user: { id: sess.user_id, name: sess.name } };
+  }
+  if (apiKey) {
+    const hash = sha256Hex(apiKey);
+    const user = MODELS_DB.prepare(
+      "SELECT id, name, enabled FROM users WHERE api_key = ?",
+    ).get(hash);
+    if (!user) return { ok: false, reason: "invalid api key" };
+    if (user.enabled !== 1) return { ok: false, reason: "user disabled" };
+    return { ok: true, user: { id: user.id, name: user.name } };
+  }
+  return { ok: null };
 }
 
 async function refreshAgents() {
@@ -12244,6 +12323,25 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         session_source: "api",
       };
 
+      // ── PHASE B: optional API auth (Bearer session token or X-API-Key) ──
+      // If auth headers ARE present they are validated; invalid → 401.
+      // If no auth headers → anonymous (existing behavior preserved).
+      const auth = authFromRequest(req);
+      if (auth.ok === false) {
+        log("INFO", "REQUEST", {
+          method,
+          url,
+          status: 401,
+          elapsed: Date.now() - startTime,
+          error: "Unauthorized: " + auth.reason,
+        });
+        jsonResponse(res, 401, {
+          error: { message: "Unauthorized: " + auth.reason },
+        });
+        return;
+      }
+      if (auth.ok === true) sessionMeta.auth_user = auth.user;
+
       // Get or create session
       let sessionId = parsed.session_id;
       if (!sessionId || !getSession(sessionId)) {
@@ -12986,6 +13084,93 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
           last_accessed: localSession.last_accessed,
         },
       });
+      return;
+    }
+
+    // ─── POST /api/auth/verify (Phase B) — api_key → session token ──
+    if (url === "/api/auth/verify" && method === "POST") {
+      const body = await readBody(req);
+      let p;
+      try { p = JSON.parse(body); } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      const key = p.api_key || "";
+      if (!key || !MODELS_DB) {
+        jsonResponse(res, 401, { error: "api_key required (and sqlite must be available)" });
+        return;
+      }
+      const hash = sha256Hex(key);
+      const user = MODELS_DB.prepare("SELECT id, name, enabled FROM users WHERE api_key = ?").get(hash);
+      if (!user || user.enabled !== 1) {
+        jsonResponse(res, 401, { error: "invalid api_key" });
+        return;
+      }
+      const token = crypto.randomBytes(24).toString("hex");
+      const sid = "s_" + crypto.randomBytes(8).toString("hex");
+      const now = Date.now();
+      const expires = now + SESSION_TTL_MS;
+      MODELS_DB.prepare(
+        "INSERT INTO sessions (id, user_id, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      ).run(sid, user.id, token, now, expires);
+      log("INFO", "AUTH_VERIFY_OK", { user: user.name });
+      jsonResponse(res, 200, {
+        ok: true,
+        user: { id: user.id, name: user.name },
+        session_id: sid,
+        session_token: token,
+        expires_at: expires,
+        ttl_ms: SESSION_TTL_MS,
+      });
+      return;
+    }
+
+    // ─── POST /api/auth/session (Phase B) — validate token ──────
+    if (url === "/api/auth/session" && method === "POST") {
+      const body = await readBody(req);
+      let p;
+      try { p = JSON.parse(body); } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      const token = p.session_token || p.token || "";
+      if (!token || !MODELS_DB) {
+        jsonResponse(res, 401, { error: "session_token required (and sqlite must be available)" });
+        return;
+      }
+      const sess = MODELS_DB.prepare(
+        `SELECT s.id, s.user_id, s.expires_at, u.name, u.enabled
+         FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`,
+      ).get(token);
+      if (!sess) { jsonResponse(res, 401, { error: "invalid session" }); return; }
+      if (sess.enabled !== 1) { jsonResponse(res, 403, { error: "user disabled" }); return; }
+      if (sess.expires_at < Date.now()) {
+        MODELS_DB.prepare("DELETE FROM sessions WHERE id = ?").run(sess.id);
+        jsonResponse(res, 401, { error: "session expired" });
+        return;
+      }
+      jsonResponse(res, 200, {
+        ok: true,
+        valid: true,
+        user: { id: sess.user_id, name: sess.name },
+        expires_at: sess.expires_at,
+      });
+      return;
+    }
+
+    // ─── POST /api/auth/logout (Phase B) — revoke token ────────
+    if (url === "/api/auth/logout" && method === "POST") {
+      const body = await readBody(req);
+      let p;
+      try { p = JSON.parse(body); } catch (e) {
+        jsonResponse(res, 400, { error: "Invalid JSON" });
+        return;
+      }
+      const token = p.session_token || p.token || "";
+      if (MODELS_DB && token) {
+        MODELS_DB.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+      }
+      jsonResponse(res, 200, { ok: true });
       return;
     }
 
@@ -13860,6 +14045,8 @@ async function init() {
   // PHASE A: seed agents table from PERSONAS.md on first boot (idempotent),
   // then load DB-first. PERSONAS.md remains as fallback for ids not in DB.
   seedAgentsFromPersonas();
+  // PHASE B: seed admin user from ADMIN_USER/ADMIN_API_KEY env (idempotent).
+  seedAdminUser();
   AGENTS = await loadPersonas();
   STATS.totalAgents = AGENTS.length;
 
