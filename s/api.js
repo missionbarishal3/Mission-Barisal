@@ -2415,9 +2415,11 @@ function extractField(block, field) {
 
 function extractPersona(block) {
   // Extract persona from YAML block scalar (|)
-  // Captures ALL indented lines after the | marker until a new section/field
+  // Captures ALL indented lines after the | marker until a new section/field.
+  // $(?![\s\S]) = true end-of-string (works with m flag) so the LAST block
+  // in the file is never silently dropped (pre-existing bug fix).
   const match = block.match(
-    /\*\*persona\*\*:\s*\|\s*\n([\s\S]*?)(?:^- \*\*|^##\s|^---|\n\n(?!  ))/m,
+    /\*\*persona\*\*:\s*\|\s*\n([\s\S]*?)(?:^- \*\*|^##\s|^---|\n\n(?!  )|$(?![\s\S]))/m,
   );
   if (match) {
     return match[1]
@@ -2429,22 +2431,134 @@ function extractPersona(block) {
   return null;
 }
 
+// ─── YAML Frontmatter Agent Parser ────────────────────────────
+// Parses custom agent files (.zombiecoder/agents/*.md) that use
+// YAML frontmatter instead of the "## agent:" markdown format:
+//   ---
+//   name: agent-id
+//   description: "..."
+//   mode: all
+//   model: some-model
+//   permission: ...
+//   ---
+//   <persona body>
+// Custom files OVERRIDE same-id agents from PERSONAS.md.
+function parseYamlAgentFile(content) {
+  const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+  if (!fmMatch) return null;
+  const fm = fmMatch[1];
+  const body = content.slice(fmMatch[0].length).trim();
+
+  // Parse simple YAML "key: value" pairs (skip nested/array lines)
+  const fields = {};
+  for (const line of fm.split("\n")) {
+    const m = line.match(/^([a-zA-Z0-9_-]+)\s*:\s*(.*)$/);
+    if (m) {
+      fields[m[1]] = m[2]
+        .trim()
+        .replace(/^"|"$/g, "")
+        .replace(/^'|'$/g, "");
+    }
+  }
+
+  const id = fields.name || "";
+  if (!id) return null;
+
+  // Model safety: slash-prefixed models (enterprise/xxx) are not in
+  // any configured provider catalog — fall back to a known free model.
+  const model = fields.model || "deepseek-v4-flash-free";
+  const safeModel = model.includes("/") ? "deepseek-v4-flash-free" : model;
+
+  const modelNames =
+    /deepseek-v4-flash-free|mimo-v2\.5-free|big-pickle|nemotron-3-ultra-free|north-mini-code-free|hy3-free/gi;
+  let persona = body || fields.description || "";
+  persona = persona
+    .replace(modelNames, "AI model")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!persona) return null;
+
+  return {
+    id,
+    name: fields.name || id,
+    model: safeModel,
+    role: fields.role || fields.mode || "general",
+    expertise: fields.expertise || fields.description || "",
+    priority: parseInt(fields.priority || "99", 10),
+    persona,
+  };
+}
+
 // ─── Load Personas ────────────────────────────────────────────
+// Sources (merged, custom overrides default):
+//   1. PERSONAS.md              — "## agent:" markdown format (default agents)
+//   2. .zombiecoder/agents/*.md — YAML frontmatter format (custom agents)
 async function loadPersonas() {
+  const merged = [];
+  const seen = new Set();
+
+  // 1. Default agents from PERSONAS.md (## agent: format)
   if (fs.existsSync(PERSONAS_FILE)) {
     try {
       const content = fs.readFileSync(PERSONAS_FILE, "utf8");
       const agents = parsePersonas(content);
-      if (agents.length > 0) {
-        log("INFO", "PERSONAS_LOADED", {
-          source: "local",
-          count: agents.length,
-        });
-        return agents;
+      for (const a of agents) {
+        if (!seen.has(a.id)) {
+          seen.add(a.id);
+          merged.push(a);
+        }
       }
     } catch (e) {
       log("WARN", "PERSONAS_PARSE_FAIL", { error: e.message });
     }
+  }
+
+  // 2. Custom agents from .zombiecoder/agents/*.md (YAML frontmatter)
+  try {
+    const agentsDir = getAgentsPath();
+    if (fs.existsSync(agentsDir)) {
+      const files = fs
+        .readdirSync(agentsDir)
+        .filter(
+          (f) =>
+            f.endsWith(".md") &&
+            f !== "syllabus.md" &&
+            f !== "SSOT.md" &&
+            f !== "PERSONAS.md",
+        );
+      for (const f of files) {
+        try {
+          const content = fs.readFileSync(path.join(agentsDir, f), "utf8");
+          const custom = parseYamlAgentFile(content);
+          if (custom && custom.id) {
+            if (seen.has(custom.id)) {
+              // Custom file wins over same-id agent from PERSONAS.md
+              const idx = merged.findIndex((a) => a.id === custom.id);
+              if (idx >= 0) merged[idx] = custom;
+            } else {
+              seen.add(custom.id);
+              merged.push(custom);
+            }
+          }
+        } catch (e) {
+          log("WARN", "CUSTOM_AGENT_PARSE_FAIL", {
+            file: f,
+            error: e.message,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    log("WARN", "CUSTOM_AGENTS_SCAN_FAIL", { error: e.message });
+  }
+
+  if (merged.length > 0) {
+    log("INFO", "PERSONAS_LOADED", {
+      source: "local+custom",
+      count: merged.length,
+    });
+    return merged;
   }
   log("WARN", "PERSONAS_NOT_FOUND", { file: PERSONAS_FILE });
 
