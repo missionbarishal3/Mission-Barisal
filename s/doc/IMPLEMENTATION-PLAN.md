@@ -1,8 +1,39 @@
 # Mission Barisal — Implementation Plan: DB Agents + Users/Sessions + Tools + MCP Connector
 
-> **Status:** APPROVED by user (Sahon/Shawon Bhai) — 2026-08-10
+> **Status:** ✅ **ALL 4 PHASES COMPLETE** — verified by engineer tests (2026-08-10)
 > **Scope:** 4 phases, all in `s/api.js` + `s/data/models.db`
 > **This document is the "thread" (খেই)** — it maps WHERE code lives, WHAT changes, and WHAT the expected result is. Update it whenever a phase lands.
+
+---
+
+## ✅ FINAL STATUS (evidence — all tested on port 5055)
+
+```
+── Phase A: agents ──
+models: 10 | has code-guru: True       ✅  (DB-first + PERSONAS.md fallback)
+db agents: 9                            ✅  (agents table seeded + CRUD)
+
+── Phase B: auth ──
+verify: True | user: shawon | token    ✅  (users+sessions tables, DB-backed)
+
+── Phase C: tools cap ──
+chat+45tools: HTTP 200                  ✅  (MAX_TOOLS_LIMIT=40 cap + auto-attach)
+
+── Phase D: outbound MCP ──
+remote servers: 1 | merged: 24          ✅  (self-test: server connected to itself)
+
+── E2E: real chat completion ──
+code-guru returns correct Bengali response (1+1=2 Peano)  ✅  (nothing broke)
+```
+
+**Commits (branch main):**
+- Phase A: `ff2c7ef` — agents table + DB-first persona loading + admin CRUD
+- Phase B: `f15a593` — users/sessions tables + /api/auth/* endpoints
+- Phase C: `9f389e8` — tools on every input endpoint (sanitizeTools + cap)
+- Phase D: `22223b9` — outbound MCP client (env + admin driven, namespaced tools)
+
+**How to run the new code in production:** restart the server on port 5000
+(`kill <old pid>` then `node api.js`) — the old process runs pre-change code.
 
 ---
 
@@ -48,7 +79,7 @@
 
 ---
 
-## 🔧 PHASE A — Agents table + DB-first persona loading
+## 🔧 PHASE A — Agents table + DB-first persona loading  ✅ COMPLETE
 
 **Files:** `s/api.js` (initModelsDb ~830, loadPersonas ~2497), `s/data/models.db`
 
@@ -85,7 +116,7 @@
 
 ---
 
-## 🔧 PHASE B — users + sessions tables + API auth
+## 🔧 PHASE B — users + sessions tables + API auth  ✅ COMPLETE
 
 **Files:** `s/api.js` (initModelsDb, verifySessionWithDomain ~2747, new auth handlers), `s/data/models.db`
 
@@ -121,7 +152,7 @@
 
 ---
 
-## 🔧 PHASE C — Tools on every input endpoint
+## 🔧 PHASE C — Tools on every input endpoint  ✅ COMPLETE
 
 **Files:** `s/api.js` (chat/completions ~12033, mission ~5414, callModelWithTools ~4941)
 
@@ -141,7 +172,9 @@
 
 ---
 
-## 🔧 PHASE D — MCP Connector (outbound MCP client)
+## 🔧 PHASE D — MCP Connector (outbound MCP client)  ✅ COMPLETE
+
+> **Note:** implemented with `REMOTE_MCP_SERVERS` env (JSON array) + `/api/mcp-remote` admin endpoints (add/sync/remove) — tool names namespaced `remote__<server>__<tool>`, plus a generic `remote_mcp_call` tool.
 
 **Files:** `s/api.js` (new `MCP_CONNECTORS` section near EXTERNAL_TOOLS ~8209), admin handlers
 
