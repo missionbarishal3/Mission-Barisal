@@ -65,9 +65,32 @@ export class MissionManager implements vscode.Disposable {
         this.deps = deps ?? {};
         // Config directory lives at OS home root ($HOME/.zombiecoder/) for global sharing
         const configRoot = os.homedir();
-        // Active workspace root — used for SSOT scanning
-        const activeRoot =
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? context.extensionUri.fsPath;
+        // Active workspace root — pick the MOST CONTENT-rich folder (not the empty one)
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        let activeRoot: string;
+        if (folders.length === 0) {
+            activeRoot = context.extensionUri.fsPath;
+        } else if (folders.length === 1) {
+            activeRoot = folders[0].uri.fsPath;
+        } else {
+            // Multiple workspace folders — pick the one with the most files
+            // (avoids picking empty subfolders like /home/sahon/1/2/)
+            let bestFolder = folders[0];
+            let bestCount = 0;
+            for (const folder of folders) {
+                try {
+                    const count = this.countFiles(folder.uri.fsPath);
+                    if (count > bestCount) {
+                        bestCount = count;
+                        bestFolder = folder;
+                    }
+                } catch { /* skip inaccessible */ }
+            }
+            activeRoot = bestFolder.uri.fsPath;
+            if (folders.length > 1) {
+                log(`Workspace: picked "${bestFolder.name}" (${bestCount} files) from ${folders.length} folders`);
+            }
+        }
         this.sessionId = computeWorkspaceSessionId(activeRoot);
         this.ssot = new SsotManager(configRoot, log, activeRoot);
         this.footprint = new FootprintScanner(activeRoot, log);
@@ -82,6 +105,23 @@ export class MissionManager implements vscode.Disposable {
     /** Active workspace root (for SSOT scanning, not config storage) */
     get activeWorkspaceRoot(): string {
         return this.ssot.projectRoot ?? this.ssot.rootDir;
+    }
+
+    /** Count files in a directory (shallow, max 2 levels) to pick the richest workspace */
+    private countFiles(dir: string, depth = 0): number {
+        if (depth > 2) return 0;
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            let count = 0;
+            for (const entry of entries) {
+                if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+                if (entry.isFile()) count++;
+                else if (entry.isDirectory()) count += this.countFiles(path.join(dir, entry.name), depth + 1);
+            }
+            return count;
+        } catch {
+            return 0;
+        }
     }
 
     /**
