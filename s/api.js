@@ -11340,6 +11340,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ─── GET /api/version ─────────────────────────────────────
+    // Extension probes this to detect Ollama servers. Return a standard
+    // response so the extension doesn't log a 404 warning.
+    if (url === "/api/version" && method === "GET") {
+      jsonResponse(res, 200, {
+        version: DOMAIN_CFG.version,
+        server: "Mission Barisal",
+        ollama: false,
+      });
+      return;
+    }
+
     // ─── GET /api/rate-limit ───────────────────────────────────
     if (url === "/api/rate-limit" && method === "GET") {
       jsonResponse(res, 200, getRateLimitStatus());
