@@ -145,7 +145,7 @@ const PERSONAS_FILE = path.resolve(
   process.env.PERSONAS_FILE || "./PERSONAS.md",
 );
 const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL || "86400000", 10);
-const MAX_HISTORY = parseInt(process.env.MAX_HISTORY || "20", 10);
+const MAX_HISTORY = parseInt(process.env.MAX_HISTORY || "10", 10); // reduced from 20→10: 50k+ token history overwhelms free tier models
 const GIT_PERSONAS_URL = process.env.GIT_PERSONAS_URL || "";
 
 // ─── User-Agent Constant ────────────────────────────────────
@@ -1173,6 +1173,17 @@ function getDefaultModel() {
 // ─── Competition Router ─────────────────────────────────────
 // Resolves which provider to call based on model name
 function resolveProvider(model, exactOnly) {
+  // 🧟 GUARD: Reject template/placeholder model names (e.g. "{{model}}")
+  // These come from misconfigured clients and cause massive PROXY_FAIL storms
+  if (!model || typeof model !== "string" || /\{\{.*\}\}/.test(model) || model.length < 2) {
+    const firstId = Object.keys(PROVIDER_CONFIG)[0];
+    return {
+      providerId: firstId,
+      config: PROVIDER_CONFIG[firstId],
+      matchType: "template_guard",
+    };
+  }
+
   const allNames = new Map();
   // Sort by priority (lower number = higher priority) so OpenCode (priority:1) wins over Groq (priority:2)
   const sortedProviders = Object.entries(PROVIDER_CONFIG).sort(
@@ -2862,7 +2873,7 @@ function authFromRequest(req) {
 // bug: "Tools provided: 71, Estimated input tokens: 50471"). Also validates
 // that tools is an array. Used by: /v1/chat/completions, /api/mission,
 // /api/v1/anti-dote, /api/input, WS chat, MCP agent_mission/agent_single.
-const MAX_TOOLS_LIMIT = 40;
+const MAX_TOOLS_LIMIT = 15; // max tools to send to small models (reduced from 20→15: free tier models choke on >15 tools)
 
 function sanitizeTools(tools) {
   if (!Array.isArray(tools) || tools.length === 0) return undefined;
@@ -4944,15 +4955,19 @@ function callModel(
             var _msg = _normed.choices?.[0]?.message || {};
             var _content = _msg.content || "";
             var _tc = _msg.tool_calls || null;
+            // CRITICAL: preserve reasoning_content from normalized message
+            // DeepSeek thinking mode REQUIRES it to be passed back in next request
+            var _reasoning = _msg.reasoning_content || null;
             if (!_content && !_tc && (_retryCount || 0) < 1) {
-              log("WARN", "EMPTY_CONTENT_RETRY", { model, retry: 1 });
+              log("WARN", "EMPTY_CONTENT_RETRY", { model, retry: 1, hadTools: !!tools });
+              // 🧟 KEY FIX: Retry WITHOUT tools — too many tools is the #1 cause of empty responses
               resolve(
                 callModel(
                   model,
                   messages,
                   temperature,
-                  tools,
-                  tool_choice,
+                  undefined, // no tools on retry
+                  undefined,
                   (_retryCount || 0) + 1,
                 ),
               );
@@ -4963,6 +4978,7 @@ function callModel(
               success: !!(_content || _tc),
               content: _content,
               tool_calls: _tc,
+              reasoning_content: _reasoning,
               raw: _parsed,
               normalized: _normed,
               model,
@@ -5103,6 +5119,9 @@ function callModel(
           const message = normalized.choices?.[0]?.message || {};
           const content = message.content || "";
           const toolCalls = message.tool_calls || null;
+          // CRITICAL: preserve reasoning_content from normalized message
+          // DeepSeek thinking mode REQUIRES it to be passed back in next request
+          const reasoningContent = message.reasoning_content || null;
 
           // Retry once if content is empty
           if (!content && !toolCalls && (_retryCount || 0) < 1) {
@@ -5127,6 +5146,7 @@ function callModel(
             success: !!(content || toolCalls),
             content,
             tool_calls: toolCalls,
+            reasoning_content: reasoningContent,
             raw: parsed,
             normalized,
             model,
@@ -5250,7 +5270,17 @@ async function callModelWithTools(
     }
 
     // Append assistant tool_calls message
-    messages.push({ role: "assistant", content: null, tool_calls: tcs });
+    // CRITICAL: preserve reasoning_content — DeepSeek thinking mode requires
+    // it to be passed back in the next request or it rejects with
+    // "The reasoning_content in the thinking mode must be passed back"
+    messages.push({
+      role: "assistant",
+      content: null,
+      tool_calls: tcs,
+      ...(response.reasoning_content
+        ? { reasoning_content: response.reasoning_content }
+        : {}),
+    });
     // Execute each tool
     for (const tc of tcs) {
       let result;
@@ -7368,9 +7398,9 @@ async function executeMission(
   }
 
   // Auto-inject MCP tools when no tools provided
-  // 🧟 MAX_TOOLS_LIMIT: Never send more than 40 tools to the model
-  // 100+ tools overwhelms the model and causes empty responses
-  const MAX_TOOLS_LIMIT = 40;
+  // 🧟 MAX_TOOLS_LIMIT: Never send more than 15 tools to the model
+  // Free tier models (deepseek/mimo) return empty responses with 20+ tools
+  const MAX_TOOLS_LIMIT = 15;
   if (!tools || tools.length === 0) {
     const mcpToolList = Object.entries(MCP_TOOLS).map(([name, def]) => ({
       type: "function",
@@ -7797,7 +7827,7 @@ function getSSOTContext(clientCtx) {
   ) {
     const truncated = clientCtx.slice(0, 3000);
     return (
-      "\n\n📋 PROJECT CONTEXT (provided by client):\n" +
+      "\n\n PROJECT CONTEXT (provided by client):\n" +
       truncated +
       "\n--- END PROJECT CONTEXT ---\n"
     );
@@ -7823,7 +7853,7 @@ function buildThreeFileContext(projectDir, sessionId) {
     const syllabusContent = readSyllabus(dir);
     if (syllabusContent) {
       return (
-        "\n\n📚 AGENT SYLLABUS (learned knowledge — ALWAYS check this first):\n" +
+        "\n\nAGENT SYLLABUS (learned knowledge — ALWAYS check this first):\n" +
         syllabusContent +
         "\n--- END SYLLABUS ---\n"
       );
@@ -7893,7 +7923,7 @@ async function executeSingleAgent(
   // Agent MUST read persona, syllabus, SSOT before responding
   // If any is missing, agent MUST say so clearly
   const mandatoryCtx =
-    "\n\n🚨 MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
+    "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
     "\n1. PERSONA: You are " +
     agent.name +
     ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
@@ -7982,8 +8012,8 @@ async function executeSingleAgent(
   }
 
   // Auto-inject MCP tools when no tools provided
-  // 🧟 MAX_TOOLS_LIMIT: Never send more than 40 tools to the model
-  const MAX_TOOLS_LIMIT = 40;
+  //  MAX_TOOLS_LIMIT: Never send more than 15 tools to the model
+  const MAX_TOOLS_LIMIT = 15;
   if (!tools || tools.length === 0) {
     const mcpToolList = Object.entries(MCP_TOOLS).map(([name, def]) => ({
       type: "function",
@@ -13129,6 +13159,26 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         let usedModel = model;
         let proxyResult = null;
 
+        // 🧟 GUARD: Skip template/placeholder model names in proxy loop
+        let resolvedModel = model;
+        if (!model || typeof model !== "string" || /\{\{.*\}\}/.test(model) || model.length < 2) {
+          log("WARN", "TEMPLATE_MODEL_REJECTED", {
+            model,
+            reason: "Template placeholder detected — using fallback model",
+          });
+          // Replace with first available model from the primary provider
+          const fallbackModels = (orderedProviders[0]?.[1]?.models || []);
+          if (fallbackModels.length > 0) {
+            resolvedModel = fallbackModels[0].apiModel || fallbackModels[0].name;
+            log("INFO", "TEMPLATE_MODEL_REPLACED", { replacement: resolvedModel });
+          } else {
+            jsonResponse(res, 400, {
+              error: { message: "Invalid model name: " + model + " (template placeholder not allowed)" },
+            });
+            return;
+          }
+        }
+
         // Model + Provider fallback: try all model×provider combos
         for (const [provId, provConf] of orderedProviders) {
           // Build model list: requested model first, then all other models from this provider
@@ -13136,8 +13186,8 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
             (m) => m.apiModel || m.name,
           );
           const tryModels = [
-            model,
-            ...providerModels.filter((m) => m !== model),
+            resolvedModel,
+            ...providerModels.filter((m) => m !== resolvedModel),
           ];
 
           for (const tryModel of tryModels) {
@@ -13257,7 +13307,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         const ssotCtx = getSSOTContext(projectContext);
         const threeFileCtx = buildThreeFileContext(null, sessionId);
         const mandatoryCtx2 =
-          "\n\n🚨 MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
+          "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
           "\n1. PERSONA: You are " +
           agent.name +
           ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
@@ -13296,11 +13346,23 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
           }
         }
 
-        await callModelStream(
-          agent.model,
-          augmentedMessages,
-          temperature,
-          (delta, parsed) => {
+        const toolsForStream =
+          tools ||
+          Object.entries(MCP_TOOLS).map(([name, def]) => ({
+            type: "function",
+            function: {
+              name,
+              description: def.description || name,
+              parameters: def.parameters || {
+                type: "object",
+                properties: {},
+              },
+            },
+          }));
+
+        // 🧟 EMPTY RESPONSE RETRY: If model returns empty, retry once without tools
+        let retryWithoutTools = false;
+        const streamCallback = (delta, parsed) => {
             const content = delta.content || "";
             const toolCalls = delta.tool_calls || null;
             if (content) fullContent += content;
@@ -13320,20 +13382,34 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
             if (finishReason) chunk.choices[0].finish_reason = finishReason;
 
             res.write("data: " + JSON.stringify(chunk) + "\n\n");
-          },
-          tools ||
-          Object.entries(MCP_TOOLS).map(([name, def]) => ({
-            type: "function",
-            function: {
-              name,
-              description: def.description || name,
-              parameters: def.parameters || {
-                type: "object",
-                properties: {},
-              },
-            },
-          })),
+        };
+
+        // First attempt: with tools
+        await callModelStream(
+          agent.model,
+          augmentedMessages,
+          temperature,
+          streamCallback,
+          toolsForStream,
         );
+
+        // 🧟 EMPTY RESPONSE RETRY: model returned nothing with tools → retry without
+        if (!fullContent && toolsForStream && toolsForStream.length > 0) {
+          retryWithoutTools = true;
+          log("WARN", "EMPTY_RESPONSE_RETRY", {
+            agent: agent.id,
+            tools: toolsForStream.length,
+            reason: "model returned 0 chars with tools, retrying without tools",
+          });
+          fullContent = ""; // reset
+          await callModelStream(
+            agent.model,
+            augmentedMessages,
+            temperature,
+            streamCallback,
+            undefined, // no tools on retry
+          );
+        }
 
         // Final [DONE] chunk
         // Apply identity masking to full content — strip model names
@@ -13364,7 +13440,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         if (sessionId) {
           const userMsg = messages.filter((m) => m.role === "user").pop();
           let userContent = userMsg ? userMsg.content : "";
-          // 🧟 INPUT_FIX: normalize array content before persisting to memory
+          //  INPUT_FIX: normalize array content before persisting to memory
           if (Array.isArray(userContent)) {
             userContent = userContent
               .map((c) => (typeof c === "string" ? c : c.text || c.value || ""))
