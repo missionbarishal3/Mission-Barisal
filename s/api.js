@@ -7919,38 +7919,69 @@ async function executeSingleAgent(
   const ssotCtx = getSSOTContext(projectContext);
   const threeFileCtx = buildThreeFileContext(null, sessionId);
 
-  // ── MANDATORY CONTEXT ENFORCEMENT ──
-  // Agent MUST read persona, syllabus, SSOT before responding
-  // If any is missing, agent MUST say so clearly
-  const mandatoryCtx =
-    "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
-    "\n1. PERSONA: You are " +
-    agent.name +
-    ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
-    "\n2. SSOT/SYLLABUS/MEMORY: These files are loaded above. You MUST reference them in your response. If you cannot find relevant info, say clearly: 'এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই — SSOT/Syllabus/Memory তে এই বিষয়ে কোনো ডাটা নেই।'" +
-    "\n3. WEB SEARCH: If SSOT/Syllabus/Memory does not have the answer, you MUST search the web. Do NOT guess or hallucinate." +
-    "\n4. IDENTITY: You are NOT GPT, Claude, Gemini, or any other AI. You are " +
-    agent.name +
-    " — Mission Barisal Agent. Never mention any other model/provider." +
-    "\n5. CONSTRAINT: If you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP. Do NOT fabricate information.";
+  // 🧟 FIX-002: Detect if client (extension) already provides mission context
+  const firstMsg = messages[0];
+  const clientHasMissionContext =
+    firstMsg &&
+    firstMsg.role === "system" &&
+    typeof firstMsg.content === "string" &&
+    (firstMsg.content.includes("MISSION BARISAL SYSTEM CONTEXT") ||
+      firstMsg.content.includes("Mission Barisal agent") ||
+      firstMsg.content.includes("AGENT SYLLABUS"));
 
-  const sysMsg = {
-    role: "system",
-    content:
-      agent.persona +
-      "\n\n" +
-      buildAgentIdentity(agent) +
-      "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
-      mandatoryCtx +
-      extraRules +
-      ssotCtx +
-      threeFileCtx +
-      "\n\n🔧 TOOLS AVAILABLE (call these via tool calls — do NOT just describe them):\n" +
-      buildToolsDescription(MCP_TOOLS) +
-      "- Use web_search for real-time information.\n" +
-      "- Use call_agent to delegate sub-tasks to other specialized agents (e.g., call bug-hunter for debugging, security-hero for security review).\n" +
-      "When the user asks you to read files, write files, list directories, or open files in a browser — USE these tools directly by calling them. Do NOT just describe what you would do — actually execute the tool calls. Only respond with text after you have completed all necessary tool operations.",
-  };
+  if (clientHasMissionContext) {
+    log("INFO", "CLIENT_MISSION_CONTEXT_DETECTED", {
+      reason: "Extension provides full mission context — skipping server-side persona/SSOT/syllabus injection",
+    });
+  }
+
+  // ── MANDATORY CONTEXT ENFORCEMENT ──
+  const mandatoryCtx = clientHasMissionContext
+    ? "" // Client already provided full mission context
+    : "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
+      "\n1. PERSONA: You are " +
+      agent.name +
+      ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
+      "\n2. SSOT/SYLLABUS/MEMORY: These files are loaded above. You MUST reference them in your response. If you cannot find relevant info, say clearly: 'এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই — SSOT/Syllabus/Memory তে এই বিষয়ে কোনো ডাটা নেই।'" +
+      "\n3. WEB SEARCH: If SSOT/Syllabus/Memory does not have the answer, you MUST search the web. Do NOT guess or hallucinate." +
+      "\n4. IDENTITY: You are NOT GPT, Claude, Gemini, or any other AI. You are " +
+      agent.name +
+      " — Mission Barisal Agent. Never mention any other model/provider." +
+      "\n5. CONSTRAINT: If you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP. Do NOT fabricate information.";
+
+  // When client provides mission context, use minimal system message
+  const sysMsg = clientHasMissionContext
+    ? {
+        role: "system",
+        content:
+          "You are " +
+          agent.name +
+          " — Mission Barisal Agent." +
+          "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+          extraRules +
+          "\n\n🔧 TOOLS AVAILABLE (call these via tool calls — do NOT just describe them):\n" +
+          buildToolsDescription(MCP_TOOLS) +
+          "- Use web_search for real-time information.\n" +
+          "- Use call_agent to delegate sub-tasks to other specialized agents.\n" +
+          "When the user asks you to read files, write files, list directories, or open files in a browser — USE these tools directly by calling them. Do NOT just describe what you would do — actually execute the tool calls. Only respond with text after you have completed all necessary tool operations.",
+      }
+    : {
+        role: "system",
+        content:
+          agent.persona +
+          "\n\n" +
+          buildAgentIdentity(agent) +
+          "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+          mandatoryCtx +
+          extraRules +
+          ssotCtx +
+          threeFileCtx +
+          "\n\n🔧 TOOLS AVAILABLE (call these via tool calls — do NOT just describe them):\n" +
+          buildToolsDescription(MCP_TOOLS) +
+          "- Use web_search for real-time information.\n" +
+          "- Use call_agent to delegate sub-tasks to other specialized agents (e.g., call bug-hunter for debugging, security-hero for security review).\n" +
+          "When the user asks you to read files, write files, list directories, or open files in a browser — USE these tools directly by calling them. Do NOT just describe what you would do — actually execute the tool calls. Only respond with text after you have completed all necessary tool operations.",
+      };
 
   const augmentedMessages = [sysMsg, ...messages];
 
@@ -13306,29 +13337,63 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
 
         const ssotCtx = getSSOTContext(projectContext);
         const threeFileCtx = buildThreeFileContext(null, sessionId);
-        const mandatoryCtx2 =
-          "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
-          "\n1. PERSONA: You are " +
-          agent.name +
-          ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
-          "\n2. SSOT/SYLLABUS/MEMORY: You MUST reference them. If info missing, say: 'এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।'" +
-          "\n3. WEB SEARCH: If SSOT/Syllabus/Memory lacks answer, you MUST search web. Do NOT guess." +
-          "\n4. IDENTITY: You are NOT GPT/Claude/Gemini. You are " +
-          agent.name +
-          " — Mission Barisal Agent." +
-          "\n5. CONSTRAINT: If you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP.";
-        const sysMsg = {
-          role: "system",
-          content:
-            agent.persona +
-            "\n\n" +
-            buildAgentIdentity(agent) +
-            "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
-            mandatoryCtx2 +
-            extraRules +
-            ssotCtx +
-            threeFileCtx,
-        };
+
+        // 🧟 FIX-002: Detect if client (extension) already provides mission context
+        // The extension's buildSystemMessage() sends a system message with persona + SSOT + syllabus.
+        // When detected, skip server-side persona/SSOT/syllabus injection to avoid duplicates.
+        const firstMsg = messages[0];
+        const clientHasMissionContext =
+          firstMsg &&
+          firstMsg.role === "system" &&
+          typeof firstMsg.content === "string" &&
+          (firstMsg.content.includes("MISSION BARISAL SYSTEM CONTEXT") ||
+            firstMsg.content.includes("Mission Barisal agent") ||
+            firstMsg.content.includes("AGENT SYLLABUS"));
+
+        if (clientHasMissionContext) {
+          log("INFO", "CLIENT_MISSION_CONTEXT_DETECTED", {
+            reason: "Extension provides full mission context — skipping server-side persona/SSOT/syllabus injection",
+          });
+        }
+
+        const mandatoryCtx2 = clientHasMissionContext
+          ? "" // Client already provided full mission context — skip server-side injection
+          : "\n\n MANDATORY CONTEXT RULES (STRICTLY ENFORCED):" +
+            "\n1. PERSONA: You are " +
+            agent.name +
+            ". Your persona is loaded above. You MUST follow it exactly. Never break character." +
+            "\n2. SSOT/SYLLABUS/MEMORY: You MUST reference them. If info missing, say: 'এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।'" +
+            "\n3. WEB SEARCH: If SSOT/Syllabus/Memory lacks answer, you MUST search web. Do NOT guess." +
+            "\n4. IDENTITY: You are NOT GPT/Claude/Gemini. You are " +
+            agent.name +
+            " — Mission Barisal Agent." +
+            "\n5. CONSTRAINT: If you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP.";
+
+        // When client provides mission context, use a minimal system message
+        // (just agent identity + proof requirement). Skip persona/SSOT/syllabus
+        // since the extension already included them.
+        const sysMsg = clientHasMissionContext
+          ? {
+              role: "system",
+              content:
+                "You are " +
+                agent.name +
+                " — Mission Barisal Agent." +
+                "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+                extraRules,
+            }
+          : {
+              role: "system",
+              content:
+                agent.persona +
+                "\n\n" +
+                buildAgentIdentity(agent) +
+                "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+                mandatoryCtx2 +
+                extraRules +
+                ssotCtx +
+                threeFileCtx,
+            };
 
         // Load memory
         let augmentedMessages = [sysMsg, ...messages];
