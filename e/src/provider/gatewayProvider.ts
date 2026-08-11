@@ -221,6 +221,8 @@ export class GatewayProvider
         this.recordCompletedRequest(modelId, modelName, usage),
       showOutput: () => this.outputChannel.show(),
       getMissionContext: () => this.missionManager.getMissionContext(),
+      // 🧟 FIX-015: Provide MCP tool definitions from server for injection
+      getMcpToolDefinitions: () => this.mcpConnector.getAllTools(),
     });
     this.inlineCompletions = new InlineCompletionService({
       client: this.client,

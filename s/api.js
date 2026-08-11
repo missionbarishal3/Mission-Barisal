@@ -7954,9 +7954,12 @@ async function executeSingleAgent(
       "\n- Do NOT generate massive responses. Keep under 4000 chars unless complexity demands more." +
       "\n- If you cannot find an answer after 2 tool calls, say 'ভাইয়া, এইটা এখনো ক্লিয়ার না' and STOP." +
       "\n- Do NOT re-verify already-verified facts. Trust your first evidence." +
-      "\n\n### SIGNATURE RULE:" +
-      "\nAfter completing significant work, add a signature line:" +
-      "\n```// Signed: [AgentName] — Mission Barisal | [date] | [what was done]```" +
+      "\n\n### SIGNATURE RULE (BRANDING + ACCOUNTABILITY):" +
+      "\nAfter completing significant work, you MUST add TWO things:" +
+      "\n1. **Code signature** (in the changed file): ```// Signed: [AgentName] — Mission Barisal | [date] | [what was done]```" +
+      "\n2. **Syllabus signature** (append to syllabus): Add entry under 'Latest Learnings' AND a '## সর্বশেষ পরিবর্তন' section at bottom with: changed files, what changed, what added, what removed, which agent did it." +
+      "\nThis protects BOTH the agent (proof of work) AND the client (accountability)." +
+      "\nEvery significant response MUST end with: 🧟 ZombieCoder Dev Agent — Mission Barisal | murubbi kook" +
       "\n\n### CONSTRAINT:" +
       "\nIf you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP. Do NOT fabricate information." +
       "\n\n⚡ TOOL RESULT ACKNOWLEDGMENT (CRITICAL):" +
@@ -13422,9 +13425,12 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
             "\n- Do NOT generate massive responses. Keep under 4000 chars unless complexity demands more." +
             "\n- If you cannot find an answer after 2 tool calls, say 'ভাইয়া, এইটা এখনো ক্লিয়ার না' and STOP." +
             "\n- Do NOT re-verify already-verified facts. Trust your first evidence." +
-            "\n\n### SIGNATURE RULE:" +
-            "\nAfter completing significant work, add a signature line:" +
-            "\n```// Signed: [AgentName] — Mission Barisal | [date] | [what was done]```" +
+            "\n\n### SIGNATURE RULE (BRANDING + ACCOUNTABILITY):" +
+            "\nAfter completing significant work, you MUST add TWO things:" +
+            "\n1. **Code signature** (in the changed file): ```// Signed: [AgentName] — Mission Barisal | [date] | [what was done]```" +
+            "\n2. **Syllabus signature** (append to syllabus): Add entry under 'Latest Learnings' AND a '## সর্বশেষ পরিবর্তন' section at bottom with: changed files, what changed, what added, what removed, which agent did it." +
+            "\nThis protects BOTH the agent (proof of work) AND the client (accountability)." +
+            "\nEvery significant response MUST end with: 🧟 ZombieCoder Dev Agent — Mission Barisal | murubbi kook" +
             "\n\n### CONSTRAINT:" +
             "\nIf you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP.";
 
