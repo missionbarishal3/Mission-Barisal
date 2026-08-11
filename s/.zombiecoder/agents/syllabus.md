@@ -386,3 +386,27 @@ REMOTE_MCP_SERVERS=[{"url":"http://localhost:3001","name":"facebook-ads"},{"url"
 - **Fix:** Server now includes `agent.persona` + `buildAgentIdentity(agent)` + tools description + SSOT + syllabus even when client provides mission context. Only mandatory context rules are skipped (extension provides those via contextBuilder).
 - **Evidence:** Agent response improved from minimal "You are Code Guru — Mission Barisal Agent" to full 600+ char response with persona, capabilities, tools list. Log: `CLIENT_MISSION_CONTEXT_DETECTED` + `TOOLS_CAPPED 24→15`.
 
+### FIX-012: Tool Result Acknowledgment — No Stuck "Processing"
+- **Status:** ✅ COMPLETE (2026-08-11)
+- **Files:** `/home/sahon/1/e/src/mission/contextBuilder.ts`, `/home/sahon/1/s/api.js`
+- **Problem:** Agent shows "⏳ Executing run_in_terminal..." but never gives a success/failure response. User stuck with "Processing" forever.
+- **Fix:**
+  1. Added "TOOL RESULT ACKNOWLEDGMENT (CRITICAL)" rules to both extension contextBuilder and server api.js
+  2. After EVERY tool execution, agent MUST respond to user with result (success/fail/don't know)
+  3. If tool fails: say "ভাইয়া, [tool] কাজ করেনি — [reason]" and STOP
+  4. NEVER leave user with just "Processing..." and no follow-up text
+  5. NEVER end turn with ONLY a tool call — always acknowledge results first
+  6. NEVER call another tool without acknowledging previous tool's result
+- **Evidence:** System message now includes explicit tool acknowledgment rules in 3 locations (extension, server non-streaming, server streaming)
+
+### FIX-013: Working Directory Isolation — Sessions Must Not Cross-Reference
+- **Status:** ✅ COMPLETE (2026-08-11)
+- **Files:** `/home/sahon/1/e/src/mission/contextBuilder.ts`, `/home/sahon/1/s/api.js`
+- **Problem:** Different sessions in same workspace directory cross-reference each other's tasks (e.g., session in directory B starts working on directory A's tasks)
+- **Fix:**
+  1. Added "WORKING DIRECTORY ISOLATION (CRITICAL)" rules to both extension contextBuilder and server api.js
+  2. Each session is INDEPENDENT — do NOT reference tasks from OTHER sessions
+  3. Focus ONLY on the CURRENT user's request and CURRENT workspace files
+  4. Do NOT say "I already did X earlier" if that was from a different session
+- **Evidence:** System message now includes explicit working directory isolation rules in 3 locations (extension, server non-streaming, server streaming)
+

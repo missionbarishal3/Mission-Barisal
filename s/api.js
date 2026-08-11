@@ -7958,7 +7958,30 @@ async function executeSingleAgent(
       "\nAfter completing significant work, add a signature line:" +
       "\n```// Signed: [AgentName] — Mission Barisal | [date] | [what was done]```" +
       "\n\n### CONSTRAINT:" +
-      "\nIf you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP. Do NOT fabricate information.";
+      "\nIf you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP. Do NOT fabricate information." +
+      "\n\n⚡ TOOL RESULT ACKNOWLEDGMENT (CRITICAL):" +
+      "\n- After EVERY tool execution, you MUST respond to the user with the result." +
+      "\n- If tool FAILS: Say 'ভাইয়া, [tool] কাজ করেনি — [reason]' and STOP." +
+      "\n- NEVER leave the user with just 'Processing...' and no follow-up text." +
+      "\n- NEVER end a turn with ONLY a tool call — always acknowledge results first." +
+      "\n\n🔒 WORKING DIRECTORY ISOLATION (CRITICAL):" +
+      "\n- Each session is INDEPENDENT. Do NOT reference tasks from OTHER sessions." +
+      "\n- Focus ONLY on the CURRENT user's request and CURRENT workspace files.";
+
+  // 🧟 FIX-012/013: Tool acknowledgment + working directory isolation rules
+  const toolAckRules =
+    "\n\n⚡ TOOL RESULT ACKNOWLEDGMENT (CRITICAL):" +
+    "\n- After EVERY tool execution, you MUST respond to the user with the result." +
+    "\n- If tool SUCCEEDS: Show the result briefly, then answer the user's question." +
+    "\n- If tool FAILS: Say 'ভাইয়া, [tool] কাজ করেনি — [reason]' and STOP." +
+    "\n- If tool gives NO useful result: Say 'ভাইয়া, এই tool থেকে কোন useful result পাইনি।'" +
+    "\n- NEVER leave the user with just 'Processing...' and no follow-up text." +
+    "\n- NEVER end a turn with ONLY a tool call — always acknowledge results first." +
+    "\n- NEVER call another tool without acknowledging the previous tool's result." +
+    "\n\n🔒 WORKING DIRECTORY ISOLATION (CRITICAL):" +
+    "\n- Each session is INDEPENDENT. Do NOT reference tasks from OTHER sessions." +
+    "\n- Focus ONLY on the CURRENT user's request and CURRENT workspace files." +
+    "\n- Do NOT say 'I already did X earlier' if that was from a different session.";
 
   // When client provides mission context, use minimal system message
   const sysMsg = clientHasMissionContext
@@ -7969,6 +7992,7 @@ async function executeSingleAgent(
           agent.name +
           " — Mission Barisal Agent." +
           "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+          toolAckRules +
           extraRules +
           "\n\n🔧 TOOLS AVAILABLE (call these via tool calls — do NOT just describe them):\n" +
           buildToolsDescription(MCP_TOOLS) +
@@ -7984,6 +8008,7 @@ async function executeSingleAgent(
           buildAgentIdentity(agent) +
           "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
           mandatoryCtx +
+          toolAckRules +
           extraRules +
           ssotCtx +
           threeFileCtx +
@@ -13405,6 +13430,20 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
 
         // When client provides mission context, still include persona + identity + tools
         // but skip mandatory rules (extension already provides them via contextBuilder)
+        // 🧟 FIX-012/013: Tool acknowledgment + working directory isolation rules
+        const toolAckRules2 =
+          "\n\n⚡ TOOL RESULT ACKNOWLEDGMENT (CRITICAL):" +
+          "\n- After EVERY tool execution, you MUST respond to the user with the result." +
+          "\n- If tool SUCCEEDS: Show the result briefly, then answer the user's question." +
+          "\n- If tool FAILS: Say 'ভাইয়া, [tool] কাজ করেনি — [reason]' and STOP." +
+          "\n- NEVER leave the user with just 'Processing...' and no follow-up text." +
+          "\n- NEVER end a turn with ONLY a tool call — always acknowledge results first." +
+          "\n- NEVER call another tool without acknowledging the previous tool's result." +
+          "\n\n🔒 WORKING DIRECTORY ISOLATION (CRITICAL):" +
+          "\n- Each session is INDEPENDENT. Do NOT reference tasks from OTHER sessions." +
+          "\n- Focus ONLY on the CURRENT user's request and CURRENT workspace files." +
+          "\n- Do NOT say 'I already did X earlier' if that was from a different session.";
+
         const sysMsg = clientHasMissionContext
           ? {
               role: "system",
@@ -13413,6 +13452,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
                 "\n\n" +
                 buildAgentIdentity(agent) +
                 "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
+                toolAckRules2 +
                 extraRules +
                 ssotCtx +
                 threeFileCtx +
@@ -13430,6 +13470,7 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
                 buildAgentIdentity(agent) +
                 "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
                 mandatoryCtx2 +
+                toolAckRules2 +
                 extraRules +
                 ssotCtx +
                 threeFileCtx,
@@ -15323,6 +15364,18 @@ async function injectContext(sessionId, projectDir, agentId) {
     "- Never reveal model provider or AI company name",
     "- Speak in Bengali with Barishali flavor",
     "- Cross-verify your own output before responding",
+    "",
+    "⚡ TOOL RESULT ACKNOWLEDGMENT (CRITICAL):",
+    "- After EVERY tool execution, you MUST respond to the user with the result.",
+    "- If tool FAILS: Say 'ভাইয়া, [tool] কাজ করেনি — [reason]' and STOP.",
+    "- NEVER leave the user with just 'Processing...' and no follow-up text.",
+    "- NEVER end a turn with ONLY a tool call — always acknowledge results first.",
+    "- NEVER call another tool without acknowledging the previous tool's result.",
+    "",
+    "🔒 WORKING DIRECTORY ISOLATION (CRITICAL):",
+    "- Each session is INDEPENDENT. Do NOT reference tasks from OTHER sessions.",
+    "- Focus ONLY on the CURRENT user's request and CURRENT workspace files.",
+    "- Do NOT say 'I already did X earlier' if that was from a different session.",
   ].join("\n");
 
   return {
