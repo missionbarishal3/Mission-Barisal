@@ -13375,18 +13375,24 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
             "\n\n### CONSTRAINT:" +
             "\nIf you lack data AND web search fails, say: 'ভাইয়া, এই মুহূর্তে আমার কাছে এই তথ্যগুলো নাই।' and STOP.";
 
-        // When client provides mission context, use a minimal system message
-        // (just agent identity + proof requirement). Skip persona/SSOT/syllabus
-        // since the extension already included them.
+        // When client provides mission context, still include persona + identity + tools
+        // but skip mandatory rules (extension already provides them via contextBuilder)
         const sysMsg = clientHasMissionContext
           ? {
               role: "system",
               content:
-                "You are " +
-                agent.name +
-                " — Mission Barisal Agent." +
+                agent.persona +
+                "\n\n" +
+                buildAgentIdentity(agent) +
                 "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
-                extraRules,
+                extraRules +
+                ssotCtx +
+                threeFileCtx +
+                "\n\n🔧 TOOLS AVAILABLE (call these via tool calls — do NOT just describe them):\n" +
+                buildToolsDescription(MCP_TOOLS) +
+                "- Use web_search for real-time information.\n" +
+                "- Use call_agent to delegate sub-tasks to other specialized agents.\n" +
+                "When the user asks you to read files, write files, list directories, or open files in a browser — USE these tools directly by calling them. Do NOT just describe what you would do — actually execute the tool calls. Only respond with text after you have completed all necessary tool operations.",
             }
           : {
               role: "system",
