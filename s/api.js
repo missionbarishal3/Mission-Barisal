@@ -7987,6 +7987,14 @@ async function executeSingleAgent(
     "\n- Do NOT say 'I already did X earlier' if that was from a different session.";
 
   // When client provides mission context, use minimal system message
+  const workspaceHint = mcpWorkingDir
+    ? "\n\n⚠️ CURRENT WORKSPACE DIRECTORY: " + mcpWorkingDir +
+      "\n- ALL file operations MUST use this directory as the base path." +
+      "\n- Do NOT hardcode any other path (like /home/sahon/Desktop/murubbikook)." +
+      "\n- Use get_working_dir tool if unsure." +
+      "\n- Terminal commands will run in this directory automatically."
+    : "";
+
   const sysMsg = clientHasMissionContext
     ? {
         role: "system",
@@ -7994,6 +8002,7 @@ async function executeSingleAgent(
           "You are " +
           agent.name +
           " — Mission Barisal Agent." +
+          workspaceHint +
           "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
           toolAckRules +
           extraRules +
@@ -8009,6 +8018,7 @@ async function executeSingleAgent(
           agent.persona +
           "\n\n" +
           buildAgentIdentity(agent) +
+          workspaceHint +
           "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
           mandatoryCtx +
           toolAckRules +
@@ -13492,6 +13502,10 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
                 agent.persona +
                 "\n\n" +
                 buildAgentIdentity(agent) +
+                "\n\n⚠️ CURRENT WORKSPACE DIRECTORY: " + (mcpWorkingDir || path.resolve(".")) +
+                "\n- ALL file operations MUST use this directory as the base path." +
+                "\n- Do NOT hardcode any other path." +
+                "\n- Use get_working_dir tool if unsure." +
                 "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
                 toolAckRules2 +
                 extraRules +
@@ -13509,6 +13523,9 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
                 agent.persona +
                 "\n\n" +
                 buildAgentIdentity(agent) +
+                "\n\n⚠️ CURRENT WORKSPACE DIRECTORY: " + (mcpWorkingDir || path.resolve(".")) +
+                "\n- ALL file operations MUST use this directory as the base path." +
+                "\n- Do NOT hardcode any other path." +
                 "\n\nPROOF REQUIREMENT: You MUST provide verifiable evidence for EVERY claim. If you cannot provide evidence, say 'আমার কাছে প্রমাণ নেই'. Still help with what you know — say you lack proof but offer suggestions." +
                 mandatoryCtx2 +
                 toolAckRules2 +
