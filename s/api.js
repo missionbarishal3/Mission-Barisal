@@ -8970,6 +8970,41 @@ async function executeMcpTool(tool, args) {
       if (!cmd.trim()) {
         return { content: [{ type: "text", text: "Empty command" }] };
       }
+
+      // 🧟 SECURITY GATE: Dangerous command detection
+      const DANGEROUS_PATTERNS = [
+        /\brm\s+-rf\b/i,           // rm -rf
+        /\brm\s+.*\*/i,            // rm with wildcards
+        /\bchmod\s+777\b/i,        // chmod 777
+        /\bchown\s+.*\s+\//i,      // chown on root
+        /\bsudo\b/i,               // sudo
+        /\bsu\s+-/i,                // su
+        /\bdd\s+.*of=/i,            // dd (disk destroyer)
+        /\bmkfs\b/i,               // format filesystem
+        /\bformat\b.*\/[a-z]:/i,   // Windows format
+        />\s*\/dev\/sd[a-z]/i,     // write to disk device
+        /\bkill\s+-9\s+1\b/i,      // kill init (PID 1)
+        /\bsystemctl\s+(stop|disable)\b/i, // stop system services
+        /\biptables\s+-F\b/i,      // flush firewall
+        /\bshutdown\b/i,           // shutdown
+        /\breboot\b/i,             // reboot
+      ];
+
+      for (const pattern of DANGEROUS_PATTERNS) {
+        if (pattern.test(cmd)) {
+          log("WARN", "DANGEROUS_COMMAND_BLOCKED", { command: cmd, pattern: pattern.toString() });
+          return {
+            content: [{
+              type: "text",
+              text: "⛔ SECURITY BLOCK: This command is flagged as dangerous and requires manual execution.\n" +
+                "Command: " + cmd + "\n" +
+                "Pattern: " + pattern.toString() + "\n\n" +
+                "If you need this command, ask the user to run it manually in their terminal."
+            }],
+          };
+        }
+      }
+
       const cwd =
         args.cwd && typeof args.cwd === "string"
           ? path.resolve(mcpWorkingDir || ".", args.cwd)
@@ -14400,6 +14435,52 @@ window.__ADMIN_CONFIG = ${JSON.stringify({
         syllabus: syllabusContent,
         path: getAgentsPath() + "/syllabus.md",
       });
+      return;
+    }
+
+    // 🧟 POST /api/tools/call — Tool execution REST endpoint
+    // Used by extension to proxy tool calls to server.
+    // Supports both sync (fast tools) and async SSE (long-running tools).
+    if (url === "/api/tools/call" && method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      try {
+        const { tool, args, async: isAsync } = JSON.parse(body);
+        if (!tool) {
+          jsonResponse(res, 400, { error: "Missing 'tool' parameter" });
+          return;
+        }
+        log("INFO", "API_TOOL_CALL", { tool, args, async: isAsync });
+
+        // Async mode: SSE stream for long-running tools (terminal, exec)
+        if (isAsync && ["terminal", "exec"].includes(tool)) {
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          });
+          res.write("data: " + JSON.stringify({ status: "started", tool }) + "\n\n");
+
+          executeMcpTool(tool, args || {})
+            .then((result) => {
+              res.write("data: " + JSON.stringify({ status: "complete", result }) + "\n\n");
+              res.write("data: [DONE]\n\n");
+              res.end();
+            })
+            .catch((error) => {
+              res.write("data: " + JSON.stringify({ status: "error", error: error.message }) + "\n\n");
+              res.write("data: [DONE]\n\n");
+              res.end();
+            });
+          return;
+        }
+
+        // Sync mode: wait for result (fast tools like read_file, glob)
+        const result = await executeMcpTool(tool, args || {});
+        jsonResponse(res, 200, { ok: true, result });
+      } catch (e) {
+        jsonResponse(res, 500, { error: e.message });
+      }
       return;
     }
 
